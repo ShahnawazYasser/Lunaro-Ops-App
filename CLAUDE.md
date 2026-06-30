@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Phase 1 complete — 2026-06-30.
+**Last updated:** Phase 2 complete — 2026-06-30.
 
 ### Completed
 
@@ -270,11 +270,22 @@ After the schema is applied:
 2. Run: `npm run seed`
 3. Check Supabase dashboard → Table Editor → `users` — should show 3 rows
 
+**Phase 2 — Login + Daily Entry**
+- `/login` — name picker (Ahsan / Farhan / Owner) + 4-digit PIN pad (auto-submits on 4th digit)
+- `POST /api/auth/login` — bcrypt verify, sets HS256 JWT in httpOnly cookie (7-day expiry)
+- `POST /api/auth/logout` — clears session cookie
+- `lib/session.ts` — JWT helpers (server + middleware)
+- `middleware.ts` — protects all page routes, redirects unauthenticated to /login
+- `/entry` — full daily shift entry form with live PKR summary
+- `POST /api/entries` — upserts shift_entry (insert or update by user+date), replaces expenses
+- Revenue formula implemented exactly per spec
+- New env var: `SESSION_SECRET` (32+ char string for JWT signing)
+
 ### In progress
-- Nothing. Phase 1 is complete.
+- Nothing. Phase 2 is complete.
 
 ### Known issues
 - None.
 
 ### Next phase
-- Phase 2: Login screen (name + 4-digit PIN), session handling, route guards.
+- Phase 3: Reimbursements screen + Owner attendance view.
