@@ -2,7 +2,6 @@
 
 /* ── Lunaro design tokens ─────────────────────────────────────────── */
 @theme inline {
-  /* Colours */
   --color-bg:           #0B1929;
   --color-surface:      #16293D;
   --color-border:       rgba(200, 212, 224, 0.12);
@@ -12,9 +11,17 @@
   --color-success:      #4AC47A;
   --color-danger:       #C45A4A;
 
-  /* Typography — system UI stack, no external font loading */
   --font-sans: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+
+  --animate-shake: shake 0.45s ease-in-out;
+}
+
+/* ── Shake animation for wrong PIN ───────────────────────────────── */
+@keyframes shake {
+  0%,  100% { transform: translateX(0); }
+  20%, 60%  { transform: translateX(-10px); }
+  40%, 80%  { transform: translateX(10px); }
 }
 
 /* ── Base reset ───────────────────────────────────────────────────── */
@@ -33,4 +40,20 @@ body {
   font-family: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Native input theming ─────────────────────────────────────────── */
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
+}
+
+/* Remove number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
