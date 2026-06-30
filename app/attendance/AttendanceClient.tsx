@@ -141,6 +141,21 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
     return emp.days.filter((d) => d.status === "present").length;
   }
 
+  // Pivot from per-employee → per-day rows (newest day first) for the mobile list
+  const dayRows = data
+    ? (data.employees[0]?.days ?? [])
+        .map((_, idx) => ({
+          date: data.employees[0].days[idx].date,
+          entries: data.employees.map((emp) => ({
+            userId: emp.id,
+            name: emp.name,
+            ...emp.days[idx],
+          })),
+        }))
+        .slice()
+        .reverse()
+    : [];
+
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
       {/* Header */}
@@ -184,116 +199,88 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
         </div>
       )}
 
-      {/* Legend */}
+      {/* Month summary + legend */}
       {!loading && data && (
-        <div className="flex items-center gap-4 px-4 py-3" style={{ borderBottom: "1px solid rgba(200,212,224,0.08)" }}>
-          <LegendItem color="#4AC47A" label="Present" />
-          <LegendItem color="#C45A4A" label="Absent" />
-          <LegendItem color="#0B1929" label="—" borderGold label2="Edited" />
+        <div className="px-4 py-3 space-y-3" style={{ borderBottom: "1px solid rgba(200,212,224,0.08)" }}>
+          <div className="flex flex-wrap gap-3">
+            {data.employees.map((emp) => (
+              <div key={emp.id} className="flex-1 min-w-[120px] rounded-xl px-3 py-2"
+                style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+                <p className="text-xs" style={{ color: "#8A9BAD" }}>{emp.name}</p>
+                <p className="text-sm font-semibold" style={{ color: "#C9A84C" }}>
+                  {countPresent(emp)} <span className="font-normal" style={{ color: "#8A9BAD" }}>/ {data.daysInMonth} days</span>
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4">
+            <LegendItem color="rgba(74,196,122,0.25)" label="Present" />
+            <LegendItem color="rgba(196,90,74,0.25)" label="Absent" />
+            <LegendItem color="#0B1929" borderGold label="Edited" />
+          </div>
         </div>
       )}
 
-      {/* Grid */}
+      {/* Day-by-day list */}
       {!loading && data && (
-        <main className="overflow-x-auto">
-          <table style={{ minWidth: "max-content", borderCollapse: "separate", borderSpacing: 0 }}>
-            <thead>
-              <tr>
-                {/* Sticky name column header */}
-                <th className="sticky left-0 z-10 text-left text-xs px-3 py-2"
-                  style={{ backgroundColor: "#0B1929", color: "#8A9BAD", minWidth: 90, borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-                  Employee
-                </th>
-                {/* Day columns */}
-                {(data.employees[0]?.days ?? []).map((day) => (
-                  <th key={day.date} className="text-center px-1 py-2"
-                    style={{ minWidth: 38, color: "#8A9BAD", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-                    <div className="text-[10px]">{dayOfWeek(day.date)}</div>
-                    <div className="text-xs font-medium">{dayLabel(day.date)}</div>
-                  </th>
-                ))}
-                {/* Summary column */}
-                <th className="sticky right-0 z-10 text-center text-xs px-3 py-2"
-                  style={{ backgroundColor: "#0B1929", color: "#8A9BAD", minWidth: 56, borderBottom: "1px solid rgba(200,212,224,0.12)", borderLeft: "1px solid rgba(200,212,224,0.12)" }}>
-                  Days
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.employees.map((emp, i) => (
-                <tr key={emp.id}>
-                  {/* Employee name — sticky left */}
-                  <td className="sticky left-0 z-10 px-3 py-2 text-sm font-medium"
-                    style={{
-                      backgroundColor: i % 2 === 0 ? "#0B1929" : "#16293D",
-                      color: "#E8EFF5",
-                      borderBottom: "1px solid rgba(200,212,224,0.08)",
-                    }}>
-                    {emp.name}
-                  </td>
+        <main className="px-4 py-3 space-y-2">
+          {dayRows.map((row) => (
+            <div key={row.date} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5"
+              style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+              <div className="shrink-0">
+                <p className="text-xs" style={{ color: "#8A9BAD" }}>{dayOfWeek(row.date)}</p>
+                <p className="text-sm font-medium">{dayLabel(row.date)}</p>
+              </div>
 
-                  {/* Day cells */}
-                  {emp.days.map((day) => {
-                    const key = `${emp.id}-${day.date}`;
-                    const isLoading = toggling === key;
+              <div className="flex gap-2 flex-wrap justify-end">
+                {row.entries.map((entry) => {
+                  const key = `${entry.userId}-${entry.date}`;
+                  const isLoading = toggling === key;
+                  const isFuture = entry.status === "future";
 
-                    let bg = "#0B1929";
-                    if (day.status === "present") bg = "rgba(74,196,122,0.25)";
-                    else if (day.status === "absent") bg = "rgba(196,90,74,0.25)";
+                  let bg = "#0B1929";
+                  let textColor = "#8A9BAD";
+                  if (entry.status === "present") { bg = "rgba(74,196,122,0.18)"; textColor = "#4AC47A"; }
+                  else if (entry.status === "absent") { bg = "rgba(196,90,74,0.18)"; textColor = "#C45A4A"; }
 
-                    const border = day.isOverridden
-                      ? "1.5px solid rgba(201,168,76,0.7)"
-                      : "1px solid rgba(200,212,224,0.06)";
+                  const border = entry.isOverridden
+                    ? "1.5px solid rgba(201,168,76,0.7)"
+                    : "1px solid rgba(200,212,224,0.10)";
 
-                    return (
-                      <td key={day.date} className="px-1 py-1.5 text-center"
-                        style={{ borderBottom: "1px solid rgba(200,212,224,0.08)" }}>
-                        <button
-                          onClick={() => { void toggle(emp.id, day.date, day.status); }}
-                          disabled={day.status === "future" || isLoading}
-                          title={day.status === "future" ? "Future date" : `Toggle ${emp.name} on ${day.date}`}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center mx-auto transition-all"
-                          style={{
-                            backgroundColor: bg,
-                            border,
-                            cursor: day.status === "future" ? "default" : "pointer",
-                            opacity: isLoading ? 0.5 : 1,
-                          }}>
-                          {isLoading ? (
-                            <div className="w-3 h-3 rounded-full border animate-spin"
-                              style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
-                          ) : day.status === "present" ? (
-                            <svg width="12" height="12" fill="none" stroke="#4AC47A" strokeWidth="2.5" viewBox="0 0 16 16">
-                              <path d="M3 8l4 4 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ) : day.status === "absent" ? (
-                            <svg width="10" height="10" fill="none" stroke="#C45A4A" strokeWidth="2.5" viewBox="0 0 16 16">
-                              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-                            </svg>
-                          ) : null}
-                        </button>
-                      </td>
-                    );
-                  })}
-
-                  {/* Summary — sticky right */}
-                  <td className="sticky right-0 z-10 text-center px-3 py-2 text-sm font-semibold"
-                    style={{
-                      backgroundColor: i % 2 === 0 ? "#0B1929" : "#16293D",
-                      color: "#C9A84C",
-                      borderBottom: "1px solid rgba(200,212,224,0.08)",
-                      borderLeft: "1px solid rgba(200,212,224,0.12)",
-                    }}>
-                    {countPresent(emp)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  return (
+                    <button key={entry.userId}
+                      onClick={() => { void toggle(entry.userId, entry.date, entry.status); }}
+                      disabled={isFuture || isLoading}
+                      title={isFuture ? "Future date" : `Toggle ${entry.name} on ${entry.date}`}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all"
+                      style={{ backgroundColor: bg, border, opacity: isLoading ? 0.5 : 1, cursor: isFuture ? "default" : "pointer" }}>
+                      <span className="text-xs font-medium" style={{ color: isFuture ? "#8A9BAD" : textColor }}>
+                        {entry.name}
+                      </span>
+                      {isLoading ? (
+                        <div className="w-3 h-3 rounded-full border animate-spin"
+                          style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
+                      ) : entry.status === "present" ? (
+                        <svg width="12" height="12" fill="none" stroke="#4AC47A" strokeWidth="2.5" viewBox="0 0 16 16">
+                          <path d="M3 8l4 4 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : entry.status === "absent" ? (
+                        <svg width="10" height="10" fill="none" stroke="#C45A4A" strokeWidth="2.5" viewBox="0 0 16 16">
+                          <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                        </svg>
+                      ) : (
+                        <span className="text-xs" style={{ color: "#8A9BAD" }}>—</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           {/* Hint */}
-          <p className="text-xs text-center py-4 px-4" style={{ color: "#8A9BAD" }}>
-            Tap a cell to toggle present / absent · Gold border = manually edited
+          <p className="text-xs text-center pt-3 pb-1" style={{ color: "#8A9BAD" }}>
+            Tap a name to toggle present / absent · Gold border = manually edited
           </p>
         </main>
       )}
@@ -309,12 +296,12 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
   );
 }
 
-function LegendItem({ color, label, borderGold, label2 }: { color: string; label: string; borderGold?: boolean; label2?: string }) {
+function LegendItem({ color, label, borderGold }: { color: string; label: string; borderGold?: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="w-4 h-4 rounded"
         style={{ backgroundColor: color, border: borderGold ? "1.5px solid rgba(201,168,76,0.7)" : "1px solid rgba(200,212,224,0.15)" }} />
-      <span className="text-xs" style={{ color: "#8A9BAD" }}>{label2 ?? label}</span>
+      <span className="text-xs" style={{ color: "#8A9BAD" }}>{label}</span>
     </div>
   );
 }
