@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import BottomNav from "@/components/BottomNav";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -211,7 +212,7 @@ export default function EntryClient({ user, venues }: Props) {
   const worked = hoursWorked(form.clockIn, form.clockOut);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
+    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
       {/* ── Header ─────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
@@ -488,6 +489,8 @@ export default function EntryClient({ user, venues }: Props) {
           {submitting ? "Saving…" : "Submit Shift"}
         </button>
       </main>
+
+      <BottomNav role={user.role} />
 
       {/* ── Scoped styles ────────────────────────────────────────── */}
       <style>{`

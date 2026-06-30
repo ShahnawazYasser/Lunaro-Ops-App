@@ -169,6 +169,8 @@ export interface Database {
           description: string | null;
           receipt_url: string | null;
           status: ReimbursementStatus;
+          expense_date: string;
+          venue_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -180,6 +182,8 @@ export interface Database {
           description?: string | null;
           receipt_url?: string | null;
           status?: ReimbursementStatus;
+          expense_date?: string;
+          venue_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -191,6 +195,8 @@ export interface Database {
           description?: string | null;
           receipt_url?: string | null;
           status?: ReimbursementStatus;
+          expense_date?: string;
+          venue_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -199,6 +205,13 @@ export interface Database {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reimbursements_venue_id_fkey";
+            columns: ["venue_id"];
+            isOneToOne: false;
+            referencedRelation: "venues";
             referencedColumns: ["id"];
           },
         ];
