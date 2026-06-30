@@ -122,8 +122,12 @@ export default function DashboardClient() {
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-4 p-3 rounded-xl text-sm" style={{ backgroundColor: "rgba(196,90,74,0.15)", color: "#C45A4A", border: "1px solid rgba(196,90,74,0.3)" }}>
-          {error}
+        <div className="mx-4 mt-4 p-3 rounded-xl text-sm flex items-center justify-between gap-3" style={{ backgroundColor: "rgba(196,90,74,0.15)", color: "#C45A4A", border: "1px solid rgba(196,90,74,0.3)" }}>
+          <span>{error}</span>
+          <button onClick={() => { void fetchDashboard(month); }}
+            className="shrink-0 text-xs px-3 py-1 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
+            Try again
+          </button>
         </div>
       )}
 

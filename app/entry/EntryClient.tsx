@@ -74,6 +74,40 @@ function pkr(amount: number): string {
   return `PKR ${Math.round(amount).toLocaleString("en-PK")}`;
 }
 
+const NEGATIVE_MSG = "Can't be a negative number";
+
+function validateForm(form: FormState): {
+  fieldErrors: Partial<Record<keyof FormState, string>>;
+  expenseErrors: Record<number, string>;
+} {
+  const fieldErrors: Partial<Record<keyof FormState, string>> = {};
+  const checks: [keyof FormState, string][] = [
+    ["totalPrints", form.totalPrints],
+    ["extraPrints", form.extraPrints],
+    ["systemPrints500", form.systemPrints500],
+    ["systemPrints250", form.systemPrints250],
+    ["freePrints", form.freePrints],
+    ["wastePrints", form.wastePrints],
+    ["cashReceived", form.cashReceived],
+    ["bankReceived", form.bankReceived],
+  ];
+
+  for (const [key, raw] of checks) {
+    if (raw.trim() !== "" && parseFloat(raw) < 0) {
+      fieldErrors[key] = NEGATIVE_MSG;
+    }
+  }
+
+  const expenseErrors: Record<number, string> = {};
+  form.expenses.forEach((exp, i) => {
+    if (exp.amount.trim() !== "" && parseFloat(exp.amount) < 0) {
+      expenseErrors[i] = NEGATIVE_MSG;
+    }
+  });
+
+  return { fieldErrors, expenseErrors };
+}
+
 function blankForm(): FormState {
   return {
     entryDate: localToday(),
@@ -99,6 +133,10 @@ export default function EntryClient({ user, venues }: Props) {
   const [form, setForm] = useState<FormState>(blankForm);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const { fieldErrors, expenseErrors } = useMemo(() => validateForm(form), [form]);
+  const hasErrors = Object.keys(fieldErrors).length > 0 || Object.keys(expenseErrors).length > 0;
 
   // Live summary — derived from form state
   const summary = useMemo(() => {
@@ -151,12 +189,18 @@ export default function EntryClient({ user, venues }: Props) {
   }, []);
 
   const handleSubmit = async () => {
+    setSubmitAttempted(true);
+
     if (!form.venueId) {
       showToast("error", "Please select a venue");
       return;
     }
     if (form.venueId === "event" && !form.eventName.trim()) {
       showToast("error", "Please enter the event name");
+      return;
+    }
+    if (hasErrors) {
+      showToast("error", "Fix the highlighted fields before submitting");
       return;
     }
 
@@ -193,6 +237,7 @@ export default function EntryClient({ user, venues }: Props) {
       if (res.ok) {
         showToast("success", data.updated ? "Shift updated!" : "Shift saved!");
         setForm(blankForm());
+        setSubmitAttempted(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
         showToast("error", data.error ?? "Something went wrong");
@@ -333,12 +378,14 @@ export default function EntryClient({ user, venues }: Props) {
             hint="PKR 500 each"
             value={form.totalPrints}
             onChange={(v) => setField("totalPrints", v)}
+            error={submitAttempted ? fieldErrors.totalPrints : undefined}
           />
           <NumField
             label="Extra prints"
             hint="PKR 250 each"
             value={form.extraPrints}
             onChange={(v) => setField("extraPrints", v)}
+            error={submitAttempted ? fieldErrors.extraPrints : undefined}
           />
 
           <Divider label="Manually printed outside the app" />
@@ -346,23 +393,27 @@ export default function EntryClient({ user, venues }: Props) {
             label="System prints — PKR 500"
             value={form.systemPrints500}
             onChange={(v) => setField("systemPrints500", v)}
+            error={submitAttempted ? fieldErrors.systemPrints500 : undefined}
           />
           <NumField
             label="System prints — PKR 250"
             value={form.systemPrints250}
             onChange={(v) => setField("systemPrints250", v)}
+            error={submitAttempted ? fieldErrors.systemPrints250 : undefined}
           />
 
-          <Divider label="Tracking only — not counted in revenue" />
+          <Divider label="Tracking only — doesn't affect money collected" />
           <NumField
             label="Free prints given"
             value={form.freePrints}
             onChange={(v) => setField("freePrints", v)}
+            error={submitAttempted ? fieldErrors.freePrints : undefined}
           />
           <NumField
             label="Wasted prints"
             value={form.wastePrints}
             onChange={(v) => setField("wastePrints", v)}
+            error={submitAttempted ? fieldErrors.wastePrints : undefined}
           />
         </Section>
 
@@ -372,11 +423,13 @@ export default function EntryClient({ user, venues }: Props) {
             label="Cash received"
             value={form.cashReceived}
             onChange={(v) => setField("cashReceived", v)}
+            error={submitAttempted ? fieldErrors.cashReceived : undefined}
           />
           <MoneyField
             label="Bank transfer received"
             value={form.bankReceived}
             onChange={(v) => setField("bankReceived", v)}
+            error={submitAttempted ? fieldErrors.bankReceived : undefined}
           />
         </Section>
 
@@ -384,7 +437,7 @@ export default function EntryClient({ user, venues }: Props) {
         <Section title="Operational Expenses">
           <p className="text-xs mb-3" style={{ color: "#8A9BAD" }}>
             Day-of costs — fuel, food, supplies. These come out of the day&apos;s
-            revenue, not personal reimbursements.
+            money collected, not personal reimbursements.
           </p>
 
           {form.expenses.map((exp, i) => (
@@ -409,6 +462,9 @@ export default function EntryClient({ user, venues }: Props) {
                     className="input-base w-full"
                   />
                 </div>
+                {submitAttempted && expenseErrors[i] && (
+                  <p className="text-xs" style={{ color: "#C45A4A" }}>{expenseErrors[i]}</p>
+                )}
               </div>
               {form.expenses.length > 1 && (
                 <button
@@ -563,35 +619,42 @@ function NumField({
   hint,
   value,
   onChange,
+  error,
 }: {
   label: string;
   hint?: string;
   value: string;
   onChange: (v: string) => void;
+  error?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="flex-1 min-w-0">
-        <span className="text-sm" style={{ color: "#E8EFF5" }}>
-          {label}
-        </span>
-        {hint && (
-          <span className="ml-1.5 text-xs" style={{ color: "#8A9BAD" }}>
-            ({hint})
+    <div>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <span className="text-sm" style={{ color: "#E8EFF5" }}>
+            {label}
           </span>
-        )}
+          {hint && (
+            <span className="ml-1.5 text-xs" style={{ color: "#8A9BAD" }}>
+              ({hint})
+            </span>
+          )}
+        </div>
+        <input
+          type="number"
+          inputMode="numeric"
+          placeholder="0"
+          min="0"
+          step="1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="input-base w-24 text-right shrink-0"
+          style={{ padding: "10px 12px", borderColor: error ? "#C45A4A" : undefined }}
+        />
       </div>
-      <input
-        type="number"
-        inputMode="numeric"
-        placeholder="0"
-        min="0"
-        step="1"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="input-base w-24 text-right shrink-0"
-        style={{ padding: "10px 12px" }}
-      />
+      {error && (
+        <p className="text-xs text-right mt-1" style={{ color: "#C45A4A" }}>{error}</p>
+      )}
     </div>
   );
 }
@@ -600,10 +663,12 @@ function MoneyField({
   label,
   value,
   onChange,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  error?: string;
 }) {
   return (
     <Field label={label}>
@@ -619,8 +684,12 @@ function MoneyField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="input-base flex-1"
+          style={{ borderColor: error ? "#C45A4A" : undefined }}
         />
       </div>
+      {error && (
+        <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{error}</p>
+      )}
     </Field>
   );
 }

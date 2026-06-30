@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
 }
+
+// Auto sign-out after this much inactivity — hardens a phone left logged
+// in as Owner from being a standing risk if it's lost or set down unlocked.
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // Minimal SVG icons — 20×20, stroke-based
 function IconEntry() {
@@ -78,11 +83,30 @@ const OWNER_NAV: NavItem[] = [
 export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
   const items = role === "owner" ? OWNER_NAV : EMPLOYEE_NAV;
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
-  };
+  }, []);
+
+  // Idle-timeout: any tap/key/scroll resets the clock; no activity for
+  // IDLE_TIMEOUT_MS signs the session out automatically.
+  useEffect(() => {
+    const resetTimer = () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      idleTimer.current = setTimeout(() => { void handleLogout(); }, IDLE_TIMEOUT_MS);
+    };
+
+    const activityEvents: (keyof WindowEventMap)[] = ["mousedown", "keydown", "touchstart", "scroll"];
+    activityEvents.forEach((evt) => window.addEventListener(evt, resetTimer));
+    resetTimer();
+
+    return () => {
+      activityEvents.forEach((evt) => window.removeEventListener(evt, resetTimer));
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, [handleLogout]);
 
   return (
     <nav
@@ -98,21 +122,21 @@ export default function BottomNav({ role }: { role: string }) {
           <Link
             key={item.href}
             href={item.href}
-            className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors"
+            className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors min-w-0"
             style={{ color: active ? "#C9A84C" : "#8A9BAD" }}
           >
             {item.icon}
-            {item.label}
+            <span className="truncate max-w-full px-0.5">{item.label}</span>
           </Link>
         );
       })}
       <button
         onClick={() => { void handleLogout(); }}
-        className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors"
-        style={{ color: "#8A9BAD" }}
+        aria-label="Sign out"
+        className="shrink-0 flex flex-col items-center justify-center py-3 px-3.5 gap-1 text-[10px] font-medium transition-colors"
+        style={{ color: "#8A9BAD", borderLeft: "1px solid rgba(200,212,224,0.12)" }}
       >
         <IconLogout />
-        Sign out
       </button>
     </nav>
   );

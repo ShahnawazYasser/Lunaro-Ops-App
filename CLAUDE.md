@@ -234,7 +234,8 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Phase 4 complete, post-Phase-4 UX fixes applied — 2026-06-30.
+**Last updated:** Phase 5 complete (code-side) — 2026-07-01. Awaiting live
+Vercel URL and Shahnawaz's go-live confirmation.
 
 ### Completed
 
@@ -348,12 +349,122 @@ Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
    own comment notes it's meant as a backstop, not the primary path.
 - `npx tsc --noEmit` → zero errors
 
+**Phase 5 — Deploy and Harden**
+- **Vercel deployment**: connected via the Vercel dashboard (not the CLI) —
+  GitHub repo imported as a new Vercel project, the three env vars
+  (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`) set in Project Settings → Environment
+  Variables, never committed to the repo. Production build (`next build`)
+  verified clean with zero errors before connecting.
+- **Mobile QA at 375px** (iPhone SE-class): tested every Phase 2–4 screen —
+  `/login`, `/entry`, `/reimburse` (both roles), `/attendance`, `/dashboard`,
+  `/entries` — in a real 375×700 viewport. One real layout bug found and
+  fixed: `components/BottomNav.tsx` had 5 equal-width flex items for the
+  owner role (4 nav tabs + the Phase-4.5 "Sign out" button), which crowded
+  labels at 375px. Fixed by making sign-out a compact icon-only button
+  (fixed width, left border divider) instead of a flex-1 item, so the 4 nav
+  tabs keep their full label width. Added `truncate` as a safety net on nav
+  labels. Everything else (forms, cards, attendance grid, stat grids) held
+  up with no changes — they were already built mobile-first in Phases 2–4.
+- **Error handling**:
+  - Found and fixed a real silent-failure bug in `ReimburseClient.tsx`'s
+    `fetchList()` — it had a `try/finally` with no `catch` and no `else`
+    branch for a non-OK response, so a failed or network-erroring fetch
+    just left the list looking empty with zero indication anything went
+    wrong. Now sets a `listError` state with a message and a "Try again"
+    button.
+  - Added a "Try again" retry button (re-runs the same fetch with current
+    month/filter state) to the existing error banners on `/dashboard`,
+    `/entries`, and `/attendance` — they showed an error message before but
+    had no explicit retry affordance.
+  - `EntryClient.tsx`: added field-level inline validation — print-count
+    and money fields can't be negative; submitting with a negative value
+    shows a red border + "Can't be a negative number" under the specific
+    field and blocks the request (previously `parseNum()` silently
+    clamped negatives to 0 with no feedback).
+  - `ReimburseClient.tsx`: amount field now shows the same kind of inline
+    error (negative / zero / blank) instead of only a toast.
+- **Session hardening**: `components/BottomNav.tsx` now also runs a
+  30-minute idle timer (resets on tap/key/scroll) that auto-signs-out —
+  hardens the "phone left logged in as Owner" risk beyond just having a
+  manual sign-out button.
+- **Copy pass**: read through all employee-facing copy. Found two spots in
+  `EntryClient.tsx` using "revenue" inconsistently with the rest of the
+  form's plain-language style ("money collected" is used everywhere else)
+  — reworded both. No other technical jargon found; the existing Phase 2–3
+  copy was already in good shape (e.g. "Should have collected" / "Difference"
+  instead of "variance"/"reconciliation", per the original spec).
+- `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+- **Live URL**: `<TBD — fill in once the Vercel project is connected>`
+
 ### In progress
-- Nothing.
+- Nothing code-side. Awaiting the live Vercel URL from Shahnawaz to finish
+  the CLAUDE.md update, then his go-live confirmation per the Phase 5 stop.
 
 ### Known issues
 - See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
-  has an unfixed, latent month-end date bug.
+  has an unfixed, latent month-end date bug (same fix pattern as the one
+  already applied to `/api/entries`).
 
 ### Next phase
-- Not yet defined — awaiting scope for Phase 5.
+- Not yet defined — this is the go-live checkpoint. Do not treat this as
+  the version staff use day to day until Shahnawaz confirms.
+
+---
+
+## Architecture Summary (as of Phase 5)
+
+- **Framework**: Next.js 16 (App Router), TypeScript strict (`npx tsc --noEmit`
+  must be zero errors), Tailwind v4. Hosted on Vercel, deployed from the
+  `master` branch (GitHub-connected; pushes to `master` auto-deploy).
+- **Auth**: no Supabase Auth — name + 4-digit PIN, bcrypt-hashed, checked
+  server-side in `app/api/auth/login/route.ts`. Session is an HS256 JWT in
+  an httpOnly cookie (`lib/session.ts`, 7-day expiry), checked on every page
+  route by `middleware.ts`. A 30-minute client-side idle timer
+  (`components/BottomNav.tsx`) auto-signs-out on top of the manual button.
+- **Database**: Supabase Postgres (`supabase_schema.sql`). All reads/writes
+  go through `supabaseAdmin` (service-role key, server-only,
+  `lib/supabase/server.ts`) inside API routes — RLS policies exist as a
+  backstop, not as the primary access-control layer; that layer is the
+  session check + role check in each route handler.
+- **Routing / access control**: `middleware.ts` redirects unauthenticated
+  users to `/login` and routes authenticated landings by role (`owner` →
+  `/dashboard`, `employee` → `/entry`). Owner-only pages
+  (`/dashboard`, `/attendance`, `/entries`) redirect employees to `/entry`
+  at the page level and return 403 at the API level — both layers exist
+  independently, neither depends on the other.
+- **Money model**: `expected = total_prints×500 + extra_prints×250 +
+  system_prints_500×500 + system_prints_250×250` (never used for actual
+  revenue, only as a "should have collected" comparison). Actual revenue =
+  `cash_received + bank_received`. Entry-level net = revenue −
+  `entry_expenses` for that shift. Dashboard net profit = month's total
+  revenue − that month's `entry_expenses` − that month's `reimbursements`
+  (by `expense_date`, all statuses). Free/waste prints are tracking-only,
+  never multiplied into any money figure.
+- **Screens**: `/login` (PIN), `/entry` + `/reimburse` (employee + owner,
+  role-aware), `/attendance` + `/dashboard` + `/entries` (owner-only).
+  `components/BottomNav.tsx` renders the role-appropriate tab set plus
+  sign-out on every authenticated screen.
+- **Live URL**: `<TBD — fill in once the Vercel project is connected>`
+
+## Adding a New Employee
+
+There's no self-service signup — users are seeded via `scripts/seed.ts`,
+which is safe to re-run (it upserts: updates the PIN hash if a user with
+that name already exists, inserts if not — won't touch or duplicate Ahsan,
+Farhan, or Owner).
+
+To add someone new:
+1. Open `scripts/seed.ts` and add a row to the `USERS` array, following the
+   existing Ahsan/Farhan entries — `{ name: "...", role: "employee", pin: "...." }`
+   (4-digit PIN, plaintext here only because the script hashes it on insert
+   — never commit a real PIN anywhere else).
+2. Run `npm run seed` with `.env.local` pointed at the **production**
+   Supabase project (same `NEXT_PUBLIC_SUPABASE_URL` /
+   `SUPABASE_SERVICE_ROLE_KEY` as set in Vercel). This is a local-machine
+   step — there's no admin UI for it.
+3. Tell the new employee their name (exactly as seeded) and PIN — they log
+   in the same way Ahsan and Farhan do, no account creation on their end.
+4. Optional cleanup: remove the temporary plaintext PIN from `USERS` after
+   confirming the login works, if you don't want it sitting in git history
+   going forward (it's already hashed in the database at that point).

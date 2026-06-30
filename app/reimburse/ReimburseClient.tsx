@@ -96,6 +96,17 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
   // List state
   const [rows, setRows] = useState<ReimbursementRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  // Form validation
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const amountError = (() => {
+    if (form.amount.trim() === "") return "Enter an amount";
+    const n = Number(form.amount);
+    if (n < 0) return "Can't be a negative number";
+    if (n <= 0) return "Enter an amount greater than 0";
+    return undefined;
+  })();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,13 +117,19 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
 
   const fetchList = useCallback(async () => {
     setListLoading(true);
+    setListError(null);
     try {
       const params = new URLSearchParams({ month: filterMonth, userId: filterUserId });
       const res = await fetch(`/api/reimbursements?${params}`);
       if (res.ok) {
         const data = (await res.json()) as { reimbursements: ReimbursementRow[] };
         setRows(data.reimbursements);
+      } else {
+        const e = (await res.json()) as { error?: string };
+        setListError(e.error ?? "Failed to load expenses");
       }
+    } catch {
+      setListError("Could not reach server — check your connection");
     } finally {
       setListLoading(false);
     }
@@ -121,8 +138,9 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
   useEffect(() => { void fetchList(); }, [fetchList]);
 
   const handleSubmit = async () => {
-    if (!form.amount || Number(form.amount) <= 0) {
-      showToast("error", "Enter an amount greater than 0");
+    setSubmitAttempted(true);
+    if (amountError) {
+      showToast("error", amountError);
       return;
     }
 
@@ -164,6 +182,7 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
       if (res.ok) {
         showToast("success", "Expense logged!");
         setForm(blankForm());
+        setSubmitAttempted(false);
         setReceiptFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
         void fetchList();
@@ -239,8 +258,12 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
                 <span className="text-sm shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
                 <input type="number" inputMode="decimal" placeholder="0" min="0"
                   value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                  className="input-base flex-1" />
+                  className="input-base flex-1"
+                  style={{ borderColor: submitAttempted && amountError ? "#C45A4A" : undefined }} />
               </div>
+              {submitAttempted && amountError && (
+                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{amountError}</p>
+              )}
             </div>
 
             {/* Venue */}
@@ -354,6 +377,14 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
         <section className="space-y-2">
           {listLoading ? (
             <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>Loading…</div>
+          ) : listError ? (
+            <div className="text-center py-8 space-y-2">
+              <p className="text-sm" style={{ color: "#C45A4A" }}>{listError}</p>
+              <button onClick={() => { void fetchList(); }}
+                className="text-sm px-4 py-1.5 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
+                Try again
+              </button>
+            </div>
           ) : rows.length === 0 ? (
             <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>No expenses for this period</div>
           ) : (
