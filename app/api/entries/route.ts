@@ -7,6 +7,44 @@ interface ExpenseInput {
   amount: number;
 }
 
+// GET /api/entries?month=2026-06 — owner-only log of all shift entries
+export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const month = searchParams.get("month");
+
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
+  }
+
+  const [year, mon] = month.split("-");
+  const daysInMonth = new Date(Number(year), Number(mon), 0).getDate();
+  const startDate = `${year}-${mon}-01`;
+  const endDate = `${year}-${mon}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const { data, error } = await supabaseAdmin
+    .from("shift_entries")
+    .select(`
+      id, user_id, entry_date, venue_id, event_name,
+      total_prints, free_prints, cash_received, bank_received,
+      clock_in, clock_out, created_at,
+      users!inner(name),
+      venues!inner(name),
+      entry_expenses(amount)
+    `)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ entries: data ?? [] });
+}
+
 interface EntryBody {
   entryDate: string;
   clockIn: string | null;

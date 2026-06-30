@@ -246,11 +246,15 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
             {/* Venue */}
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Venue (optional)</label>
-              <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
-                className="input-base w-full">
-                <option value="">— None —</option>
-                {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
+              {venues.length === 0 ? (
+                <p className="text-sm" style={{ color: "#8A9BAD" }}>No venues configured</p>
+              ) : (
+                <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
+                  className="input-base w-full">
+                  <option value="">— None —</option>
+                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              )}
             </div>
 
             {/* Date */}

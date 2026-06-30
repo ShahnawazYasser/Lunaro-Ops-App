@@ -37,8 +37,8 @@ export default function LoginClient() {
         });
 
         if (res.ok) {
-          // Hard redirect so server components re-render with the new cookie
-          window.location.href = "/entry";
+          // Hard redirect to "/" — middleware sends each role to its landing page
+          window.location.href = "/";
         } else {
           triggerShake();
           setPin("");

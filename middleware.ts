@@ -11,9 +11,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Authenticated — redirect away from /login and root
+  // Authenticated — redirect away from /login and root, landing page by role
   if (pathname === "/login" || pathname === "/") {
-    return NextResponse.redirect(new URL("/entry", request.url));
+    const landingPath = session.role === "owner" ? "/dashboard" : "/entry";
+    return NextResponse.redirect(new URL(landingPath, request.url));
   }
 
   return NextResponse.next();

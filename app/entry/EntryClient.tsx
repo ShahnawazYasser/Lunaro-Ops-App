@@ -204,11 +204,6 @@ export default function EntryClient({ user, venues }: Props) {
     }
   };
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
-  };
-
   const worked = hoursWorked(form.clockIn, form.clockOut);
 
   return (
@@ -229,13 +224,6 @@ export default function EntryClient({ user, venues }: Props) {
             — {user.name}
           </span>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-sm px-3 py-1.5 rounded-lg"
-          style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.12)" }}
-        >
-          Sign out
-        </button>
       </header>
 
       {/* ── Toast ──────────────────────────────────────────────── */}
@@ -304,18 +292,24 @@ export default function EntryClient({ user, venues }: Props) {
 
           {/* Venue */}
           <Field label="Venue">
-            <select
-              value={form.venueId}
-              onChange={(e) => setField("venueId", e.target.value)}
-              className="input-base w-full"
-            >
-              <option value="">Select venue…</option>
-              {venues.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+            {venues.length === 0 ? (
+              <p className="text-sm" style={{ color: "#C45A4A" }}>
+                No venues configured — contact the owner
+              </p>
+            ) : (
+              <select
+                value={form.venueId}
+                onChange={(e) => setField("venueId", e.target.value)}
+                className="input-base w-full"
+              >
+                <option value="">Select venue…</option>
+                {venues.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
 
           {/* Event name (only when venue = event) */}

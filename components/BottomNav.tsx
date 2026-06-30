@@ -54,6 +54,14 @@ function IconEntries() {
     </svg>
   );
 }
+function IconLogout() {
+  return (
+    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const EMPLOYEE_NAV: NavItem[] = [
   { href: "/entry", label: "Daily Entry", icon: <IconEntry /> },
@@ -70,6 +78,11 @@ const OWNER_NAV: NavItem[] = [
 export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
   const items = role === "owner" ? OWNER_NAV : EMPLOYEE_NAV;
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  };
 
   return (
     <nav
@@ -93,6 +106,14 @@ export default function BottomNav({ role }: { role: string }) {
           </Link>
         );
       })}
+      <button
+        onClick={() => { void handleLogout(); }}
+        className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors"
+        style={{ color: "#8A9BAD" }}
+      >
+        <IconLogout />
+        Sign out
+      </button>
     </nav>
   );
 }

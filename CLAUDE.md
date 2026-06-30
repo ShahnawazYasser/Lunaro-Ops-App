@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Phase 3 complete — 2026-06-30.
+**Last updated:** Phase 4 complete, post-Phase-4 UX fixes applied — 2026-06-30.
 
 ### Completed
 
@@ -293,11 +293,67 @@ After the schema is applied:
 - Schema migration: added `expense_date date`, `venue_id text` columns to `reimbursements`; created `receipts` Storage bucket (public, 5 MB)
 - PR: https://github.com/ShahnawazYasser/Lunaro-Ops-App/pull/1 (phase-3 → develop)
 
+**Phase 4 — Owner Dashboard + Entries Log**
+- `GET /api/dashboard?month=` — owner-only; returns total revenue (cash+bank across the month's shift_entries), operational expenses (entry_expenses tied to those shifts), reimbursements (by `expense_date` in month, all statuses), net profit, free/waste print totals, revenue+shift count by venue, and attendance summary (days present per employee, reusing the same derivation rules as `/api/attendance`: present = shift exists, unless an override says otherwise)
+- `/dashboard` — owner-only; month switcher, net profit hero card, stat cards (revenue, opex, reimbursements, free prints + estimated cost @ PKR 500, waste prints), revenue-by-venue list, attendance summary list
+- `GET /api/entries?month=` — owner-only; added to existing `app/api/entries/route.ts` (which already had POST); lists all shift entries for the month, most recent first, joined with employee + venue names and nested expenses
+- `/entries` — owner-only; month switcher, per-entry cards showing employee, venue/event, date, hours worked (derived from `clock_in`/`clock_out`), total prints, free prints, amount received, net (received − that entry's own expenses)
+- Bottom nav "Dashboard" and "Entries" tabs (already present in `components/BottomNav.tsx` from Phase 3) now resolve to real pages
+- Added empty-state messaging for the venue dropdown on `/entry` and `/reimburse` when no venues are configured (previously just rendered an empty `<select>`)
+- `npx tsc --noEmit` → zero errors
+
+### Bug found and fixed during Phase 4
+While building `/api/entries`, found that the month's end-date was computed as
+`new Date(year, month, 0).toISOString().split("T")[0]` — this converts a
+*local* midnight timestamp to UTC before slicing the date, which silently
+shifts the date back a day in any timezone ahead of UTC (the dev/prod server
+runs in `Asia/Karachi`, UTC+5). In practice this dropped every shift entry
+dated on the last day of the month from the entries list. Caught it because
+a real June 30 test entry was missing from `/api/entries?month=2026-06`
+despite showing up correctly in `/api/dashboard` (which built the date
+string manually instead of round-tripping through `Date`/`toISOString`).
+Fixed in the new `/api/entries` route by computing `endDate` as a plain
+string, matching the safe pattern already used in `/api/attendance`.
+
+**The identical pattern exists in `app/api/reimbursements/route.ts`
+(Phase 3, untouched in this phase)** — its `endDate` is computed the same
+buggy way, so any reimbursement logged on the last calendar day of a month
+will silently disappear from that month's list and totals (including the
+"owed per employee" figures on `/reimburse`). No reimbursements were logged
+on a month-end date yet, so this hasn't surfaced in testing — but it will.
+Flagging per the "stop and flag conflicts" rule rather than fixing it
+silently, since `/reimburse` is outside Phase 4's scope. Recommend a
+one-line fix in a future phase: replace
+`new Date(Number(year), Number(mon), 0).toISOString().split("T")[0]` with
+the manual `${year}-${mon}-${String(daysInMonth).padStart(2,"0")}` string
+construction used everywhere else.
+
+### Small fix — between Phase 4 and Phase 5
+Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
+
+1. **Logout was only reachable from `/entry`.** Moved the sign-out control
+   into `components/BottomNav.tsx` — the one piece already rendered on
+   every authenticated screen (`/entry`, `/reimburse`, `/attendance`,
+   `/dashboard`, `/entries`) — as an extra item alongside the role-based
+   nav tabs. Removed the old header logout button + handler from
+   `app/entry/EntryClient.tsx` so there's a single source of truth.
+2. **Post-login landing page was hardcoded to `/entry` for every role.**
+   Fixed at the actual redirect point: `middleware.ts` now sends an
+   authenticated user hitting `/login` or `/` to `/dashboard` (owner) or
+   `/entry` (employee) based on `session.role`, instead of always `/entry`.
+   `app/login/LoginClient.tsx` now hard-redirects to `/` after a successful
+   PIN check (was hardcoded to `/entry`) so middleware's role logic always
+   runs. Also fixed the same hardcoded fallback in `app/page.tsx`'s direct
+   `redirect()` call, since it's the same redirect chain and middleware's
+   own comment notes it's meant as a backstop, not the primary path.
+- `npx tsc --noEmit` → zero errors
+
 ### In progress
-- Nothing. Phase 3 is complete.
+- Nothing.
 
 ### Known issues
-- None.
+- See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
+  has an unfixed, latent month-end date bug.
 
 ### Next phase
-- Phase 4: Owner dashboard (monthly revenue/expense/net summary) + Entries log (paginated list of all shift entries, owner can filter by employee/month).
+- Not yet defined — awaiting scope for Phase 5.
