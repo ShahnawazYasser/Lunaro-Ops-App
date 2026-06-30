@@ -205,7 +205,7 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
                   Employee
                 </th>
                 {/* Day columns */}
-                {data.employees[0]?.days.map((day) => (
+                {(data.employees[0]?.days ?? []).map((day) => (
                   <th key={day.date} className="text-center px-1 py-2"
                     style={{ minWidth: 38, color: "#8A9BAD", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
                     <div className="text-[10px]">{dayOfWeek(day.date)}</div>

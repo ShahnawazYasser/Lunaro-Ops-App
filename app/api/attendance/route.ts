@@ -3,14 +3,15 @@ import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export interface AttendanceDay {
+  date: string;
   status: "present" | "absent" | "future";
-  hasOverride: boolean;
+  isOverridden: boolean;
 }
 
 export interface EmployeeAttendance {
-  userId: string;
+  id: string;
   name: string;
-  attendance: Record<string, AttendanceDay>;
+  days: AttendanceDay[];
 }
 
 // GET /api/attendance?month=2026-06
@@ -82,13 +83,13 @@ export async function GET(request: NextRequest) {
 
   // Build attendance grid
   const result: EmployeeAttendance[] = employees.map((emp) => {
-    const attendance: Record<string, AttendanceDay> = {};
+    const days: AttendanceDay[] = [];
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${yearStr}-${monStr}-${String(day).padStart(2, "0")}`;
 
       if (dateStr > todayStr) {
-        attendance[dateStr] = { status: "future", hasOverride: false };
+        days.push({ date: dateStr, status: "future", isOverridden: false });
         continue;
       }
 
@@ -96,19 +97,21 @@ export async function GET(request: NextRequest) {
       const hasOverride = overrideMap.has(key);
 
       if (hasOverride) {
-        attendance[dateStr] = {
+        days.push({
+          date: dateStr,
           status: overrideMap.get(key) ? "present" : "absent",
-          hasOverride: true,
-        };
+          isOverridden: true,
+        });
       } else {
-        attendance[dateStr] = {
+        days.push({
+          date: dateStr,
           status: shiftSet.has(key) ? "present" : "absent",
-          hasOverride: false,
-        };
+          isOverridden: false,
+        });
       }
     }
 
-    return { userId: emp.id, name: emp.name, attendance };
+    return { id: emp.id, name: emp.name, days };
   });
 
   return NextResponse.json({ employees: result, daysInMonth });
