@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* ── Lunaro design tokens ─────────────────────────────────────────── */
+@theme inline {
+  /* Colours */
+  --color-bg:           #0B1929;
+  --color-surface:      #16293D;
+  --color-border:       rgba(200, 212, 224, 0.12);
+  --color-gold:         #C9A84C;
+  --color-text:         #E8EFF5;
+  --color-text-muted:   #8A9BAD;
+  --color-success:      #4AC47A;
+  --color-danger:       #C45A4A;
+
+  /* Typography — system UI stack, no external font loading */
+  --font-sans: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+}
+
+/* ── Base reset ───────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background-color: #0B1929;
+  color: #E8EFF5;
+  font-family: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
