@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Phase 2 complete — 2026-06-30.
+**Last updated:** Phase 3 complete — 2026-06-30.
 
 ### Completed
 
@@ -281,11 +281,23 @@ After the schema is applied:
 - Revenue formula implemented exactly per spec
 - New env var: `SESSION_SECRET` (32+ char string for JWT signing)
 
+**Phase 3 — Reimbursements + Attendance + Bottom Nav**
+- `components/BottomNav.tsx` — sticky bottom nav; 2-tab for employees, 4-tab for owner
+- `/reimburse` — expense log form (category, amount, venue, date, note, optional receipt photo upload to Supabase Storage `receipts` bucket); filtered list with month switcher + employee filter chips; total-owed per employee (pending+approved, not paid); status badges
+- `/attendance` — owner-only; horizontally scrollable monthly grid with sticky name column + sticky days-count column; tap to toggle present/absent (optimistic); gold border on overridden cells; month switcher in header
+- `GET/POST /api/reimbursements` — list (filtered by month + userId, joins users+venues) + insert
+- `POST /api/reimbursements/upload` — receipt upload to Storage, validates type + 5 MB limit
+- `GET /api/attendance` — owner-only, derives present/absent/future per employee per day with override resolution
+- `POST /api/attendance/override` — owner-only check-then-upsert attendance_overrides
+- `lib/supabase/types.ts` — updated reimbursements type with `expense_date` + `venue_id`
+- Schema migration: added `expense_date date`, `venue_id text` columns to `reimbursements`; created `receipts` Storage bucket (public, 5 MB)
+- PR: https://github.com/ShahnawazYasser/Lunaro-Ops-App/pull/1 (phase-3 → develop)
+
 ### In progress
-- Nothing. Phase 2 is complete.
+- Nothing. Phase 3 is complete.
 
 ### Known issues
 - None.
 
 ### Next phase
-- Phase 3: Reimbursements screen + Owner attendance view.
+- Phase 4: Owner dashboard (monthly revenue/expense/net summary) + Entries log (paginated list of all shift entries, owner can filter by employee/month).
