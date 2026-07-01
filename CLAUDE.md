@@ -234,12 +234,12 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** PWA Part 2 of 3 complete — 2026-07-01. Phase 5 (deploy +
-harden) is done and live; PWA support is a separate, additional 3-part
-mini-project layered on top. Part 1 (manifest + icons) and Part 2
-(service worker + network-first API caching) are both done. Still
-awaiting Shahnawaz's go-live confirmation before staff use this day to
-day.
+**Last updated:** PWA Part 3 of 3 partially verified — 2026-07-01. Phase 5
+(deploy + harden) is done and live. PWA support (manifest/icons, service
+worker, and this final verification pass) is code-complete, but Part 3's
+real-device checks (phone install, visual browser regression) still need
+Shahnawaz to run them — see "In progress" below. Still awaiting
+Shahnawaz's go-live confirmation before staff use this day to day.
 
 ### Completed
 
@@ -515,15 +515,67 @@ the service worker is `activated and is running`, `lunaro-shell-v1`
 exists in Cache Storage, and a static chunk was served `(from disk
 cache)` with the expected `immutable` header.
 
+**PWA Support — Part 3 of 3 (Final Verification, Server-Side Only)**
+Verification and cleanup only, no new features, per scope. Chrome MCP
+was unreachable all session, so the real-device / real-browser checks
+this part calls for could not be run by Claude — see "In progress"
+below for exactly what's left and how to run it.
+
+What was verified (against `npm run start`, a production build):
+- `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+- **Role-based routing regression, all three users** (Ahsan, Farhan,
+  Owner), scripted via `curl` with each user's real session cookie:
+  landing redirect (`/` → `/entry` for employees, `/dashboard` for
+  Owner), employee access to `/entry` and `/reimburse` (200), employee
+  redirect away from owner-only pages `/attendance` `/dashboard`
+  `/entries` (307 → `/entry`), owner-only API 403 for employees
+  (`/api/attendance`, `/api/dashboard`, `/api/entries`), and full 200
+  access for Owner across every page and API. No regressions found from
+  the Part 1/2 PWA changes — this only proves server-side routing/auth
+  is intact, not that every on-screen form/button still renders and
+  behaves correctly (that needs a real browser, see below).
+- **PWA asset routes re-confirmed** unauthenticated-accessible after
+  Part 2's middleware fix (`/manifest.json`, `/sw.js`, icons all still
+  200, not redirected).
+- **Data freshness at the API layer**: fetched Dashboard's `netProfit`
+  for July, submitted a new shift entry via the API, re-fetched
+  Dashboard, confirmed the figure updated immediately (5,000 → 7,500,
+  matching the entry's cash received) with zero caching interference.
+
+**Important — this environment has no separate dev/staging Supabase
+project.** `.env.local` points at the same `ybovehabxjjomurhqnlm`
+project the live Vercel deployment uses. The data-freshness check above
+wrote a real row (Ahsan, 2026-07-15, `tc`, PKR 2,500) into production to
+prove the point, then deleted it via direct SQL once Shahnawaz confirmed
+that was OK — verified `netProfit` reverted to 5,000 after cleanup. Any
+future write-testing against this app should assume it's hitting real
+data and ask before running, not after.
+
 ### In progress
-- **Two checks from the Part 2 spec were not run this session** (Chrome
-  MCP was unavailable for live DevTools driving, and the middleware bug
-  above was the priority): confirming Cache Storage has **no** `/api/...`
-  entries, and the live "submit a shift entry from another session,
-  refresh Dashboard, confirm the number updates" check. Recommend running
-  both before starting Part 3, since they're the two checks that actually
-  prove the network-first-for-API guarantee, not just that assets cache.
-- PWA Part 3 (final install + regression testing) not started.
+- **Part 3's real-device checks were not run this session** (Chrome MCP
+  unreachable) — these are what's actually left to close out PWA support:
+  1. **Plain-browser regression** (not installed): log in as each of the
+     three users in a normal browser tab, click through Entry, Reimburse,
+     Attendance, Dashboard, Entries — confirm every form/button/live
+     calculation still works exactly as before. (The server-side routing
+     check above is a good proxy but doesn't exercise client-side
+     rendering or interaction.)
+  2. **Real phone install**: remove any existing home screen icon,
+     re-add via "Add to Home Screen" so it picks up the final
+     manifest + service worker, confirm the icon is correct, it opens in
+     standalone mode (no browser address bar), and a second open feels
+     noticeably faster than the first.
+  3. **Data freshness from the installed app specifically**: open
+     Dashboard on the installed app, note net profit, submit a change
+     (from the same or another device), refresh, confirm the number
+     updates. The API-layer check above proves the server side is
+     correct; this proves the service worker itself doesn't intercept
+     `/api/*` when running in real standalone mode.
+  4. **Console check in the installed app**: DevTools (via `chrome://inspect`
+     for an installed PWA, or Safari's remote inspector on iOS) — confirm
+     no errors and no service worker registration failures.
+- If anything turns up broken in the four checks above, fix it and
+  re-verify — stay within "fix what Parts 1–2 broke," no new features.
 - Core app is code-complete and live at https://lunaro-ops-app.vercel.app
   — awaiting Shahnawaz's go-live confirmation per the Phase 5 stop before
   treating this as the version staff use day to day.
@@ -534,9 +586,8 @@ cache)` with the expected `immutable` header.
   already applied to `/api/entries`).
 
 ### Next phase
-- Finish the two outstanding Part 2 checks above, then start Part 3:
-  final install + regression testing (to be scoped after Part 2 is fully
-  confirmed).
+- Finish the four outstanding Part 3 device checks above. Once confirmed,
+  PWA support (all 3 parts) is fully closed out.
 - Core app: go-live checkpoint still open — not yet defined as "next
   phase" until Shahnawaz confirms.
 
