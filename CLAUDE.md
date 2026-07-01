@@ -234,11 +234,12 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** PWA Part 1 of 3 complete — 2026-07-01. Phase 5 (deploy +
+**Last updated:** PWA Part 2 of 3 complete — 2026-07-01. Phase 5 (deploy +
 harden) is done and live; PWA support is a separate, additional 3-part
-mini-project layered on top, Part 1 of which (manifest + icons) is now
-done. Still awaiting Shahnawaz's go-live confirmation before staff use
-this day to day.
+mini-project layered on top. Part 1 (manifest + icons) and Part 2
+(service worker + network-first API caching) are both done. Still
+awaiting Shahnawaz's go-live confirmation before staff use this day to
+day.
 
 ### Completed
 
@@ -426,11 +427,106 @@ Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
 - Files touched: `app/layout.tsx`, `public/manifest.json`,
   `public/icons/*`, `public/apple-touch-icon.png` only, per scope.
 
+**PWA Support — Part 2 of 3 (Service Worker + Network-First API Caching)**
+- **Library decision, flagged clearly**: did not use `next-pwa` (or its
+  `@ducanh2912/next-pwa` fork). Both wrap `workbox-webpack-plugin`, which
+  hooks into webpack's config — this app's `next build` runs on Turbopack
+  (confirmed via the build output: `▲ Next.js 16.2.9 (Turbopack)`), and
+  Turbopack does not run webpack plugins, so that dependency would
+  silently produce no service worker at all in this project. Next.js
+  itself has no built-in/official PWA feature as of 16.2.9. Given the
+  caching rules required here are simple and exact (cache-first for a
+  known, small set of static paths; everything else untouched), a
+  hand-rolled service worker was used instead — no new dependency, full
+  control, and it maps 1:1 onto the spec instead of fighting a
+  webpack-oriented library's config format.
+- `public/sw.js` — new service worker script:
+  - Cache-first (cache `lunaro-shell-v1`) for `/_next/static/*` (Next's
+    content-hashed build output — safe to cache indefinitely since a new
+    deploy always uses new hashed filenames, so stale-JS-after-deploy
+    isn't possible), plus the exact static paths from Part 1
+    (`/manifest.json`, `/apple-touch-icon.png`, `/favicon.ico`, the three
+    `/icons/*.png` files), plus any request whose `destination` is
+    `script`/`style`/`font`
+  - **Every other request is left completely unintercepted** — no
+    `respondWith` at all, so it just hits the network normally. This
+    covers every `/api/*` route (dashboard, entries, attendance,
+    reimbursements, auth, health) and every page navigation (which are
+    all server-rendered per-session/per-role, not static — caching HTML
+    here would risk serving one user's dashboard number, or the wrong
+    role's page, to someone else). This is stronger than "network-first"
+    — it's network-only for these, so there's no cache to ever fall back
+    to, stale or otherwise.
+  - `activate` handler deletes any cache not named `lunaro-shell-v1`
+    (hygiene, avoids unbounded growth across SW versions)
+  - Explicitly does **not** implement offline queuing, background sync,
+    or any "submit while offline" behavior — out of scope per the spec,
+    and a real risk (double-submits) for a financial/attendance tool
+- `components/ServiceWorkerRegister.tsx` — new client component, rendered
+  once in `app/layout.tsx`; registers `/sw.js` via `useEffect`, gated to
+  `process.env.NODE_ENV === "production"` only (registering in dev would
+  cache fast-changing dev-server chunks and fight hot reload — standard
+  practice, not scope creep)
+- `next.config.ts` — added a `headers()` rule forcing
+  `Cache-Control: no-cache` on `/sw.js` itself, so browsers always
+  revalidate the service worker script with the server instead of
+  long-caching it and never picking up future updates to its logic
+- `app/layout.tsx` — one import + one `<ServiceWorkerRegister />` render;
+  `public/manifest.json` and the Part 1 icons were **not** touched
+- **Server-side verification done**: `npm run start` (production build)
+  confirms `/sw.js` → `200`, `Cache-Control: private, no-cache, no-store,
+  max-age=0, must-revalidate`; a real `/_next/static/chunks/*.js` →
+  `200`, `Cache-Control: public, max-age=31536000, immutable` (confirms
+  the cache-first assumption for build output is sound)
+- `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+- Files touched: `public/sw.js` (new), `components/ServiceWorkerRegister.tsx`
+  (new), `app/layout.tsx`, `next.config.ts`. Manifest/icons from Part 1
+  untouched.
+
+### Bug found and fixed during Part 2 browser verification
+Shahnawaz tested Part 2 live and hit `Manifest: Line: 1, column: 1,
+Syntax error` in the console. Root cause was not the manifest file itself
+— it was `middleware.ts` (Phase 2, untouched since). Its route matcher
+only excluded `api`, `_next/static`, `_next/image`, and `favicon.ico`;
+everything else — including `/manifest.json`, `/sw.js`,
+`/apple-touch-icon.png`, and `/icons/*` — was subject to the auth check.
+Fetching `/manifest.json` while logged out (or on a fresh navigation) hit
+the "no session → redirect to /login" branch and got back the `/login`
+page's HTML, which the browser's manifest parser then tried to read as
+JSON — hence "Line 1, column 1" (HTML starts with `<`, not `{`). This
+silently affected `/sw.js` and the icons the same way; manifest parsing
+is just the one that surfaces an error message.
+
+Fixed by extending `middleware.ts`'s matcher to also exclude
+`manifest.json`, `sw.js`, `apple-touch-icon.png`, and `icons/` — these
+PWA assets must be fetchable unauthenticated. This touches a file outside
+Part 2's declared scope (`middleware.ts`), flagged per the "stop and flag
+conflicts" rule rather than left broken, since it directly blocked the
+feature being verified. `npx tsc --noEmit` and `npm run build` stayed
+zero errors after the fix.
+
+**Verified live after the fix** (unauthenticated `curl`-equivalent
+checks against `npm run start`): `/manifest.json` → `200`,
+`Content-Type: application/json`, correct body; `/sw.js` → `200`,
+`application/javascript`; `/icons/icon-192.png` and
+`/apple-touch-icon.png` → `200`, `image/png`. None redirect to `/login`
+anymore. Shahnawaz separately confirmed via DevTools → Application that
+the service worker is `activated and is running`, `lunaro-shell-v1`
+exists in Cache Storage, and a static chunk was served `(from disk
+cache)` with the expected `immutable` header.
+
 ### In progress
-- PWA Part 2 (service worker + caching) not started. Core app is
-  code-complete and live at https://lunaro-ops-app.vercel.app — awaiting
-  Shahnawaz's go-live confirmation per the Phase 5 stop before treating
-  this as the version staff use day to day.
+- **Two checks from the Part 2 spec were not run this session** (Chrome
+  MCP was unavailable for live DevTools driving, and the middleware bug
+  above was the priority): confirming Cache Storage has **no** `/api/...`
+  entries, and the live "submit a shift entry from another session,
+  refresh Dashboard, confirm the number updates" check. Recommend running
+  both before starting Part 3, since they're the two checks that actually
+  prove the network-first-for-API guarantee, not just that assets cache.
+- PWA Part 3 (final install + regression testing) not started.
+- Core app is code-complete and live at https://lunaro-ops-app.vercel.app
+  — awaiting Shahnawaz's go-live confirmation per the Phase 5 stop before
+  treating this as the version staff use day to day.
 
 ### Known issues
 - See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
@@ -438,9 +534,9 @@ Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
   already applied to `/api/entries`).
 
 ### Next phase
-- PWA Part 2: service worker + caching strategy (only once Part 1 —
-  manifest + icons — is confirmed working on a real device).
-- PWA Part 3: to be scoped after Part 2.
+- Finish the two outstanding Part 2 checks above, then start Part 3:
+  final install + regression testing (to be scoped after Part 2 is fully
+  confirmed).
 - Core app: go-live checkpoint still open — not yet defined as "next
   phase" until Shahnawaz confirms.
 

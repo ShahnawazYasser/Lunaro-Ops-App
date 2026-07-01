@@ -21,6 +21,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on page routes only; skip API routes, static files, Next.js internals
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  // Run on page routes only; skip API routes, static files, Next.js
+  // internals, and the PWA assets (manifest, service worker, icons) —
+  // these must be fetchable unauthenticated or they get redirected to
+  // /login and served HTML where the browser expects JSON/JS/images.
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest\\.json|sw\\.js|apple-touch-icon\\.png|icons/).*)",
+  ],
 };
