@@ -43,15 +43,19 @@ body {
 }
 
 /* ── Native input theming ─────────────────────────────────────────── */
-/* iOS Safari quirk: date/time inputs render at an intrinsic content width
-   and don't reliably honor width:100% from a flex/grid child the way text
-   inputs do, which can overflow their card. Force box-sizing + width. */
+/* iOS Safari quirk: the native -webkit-datetime-edit control inside
+   date/time inputs has an intrinsic min-content width (based on the
+   locale date/time format) that wins over an explicit width:100% — the
+   input renders at its intrinsic size and overflows the card instead of
+   shrinking. `width:0` + `min-width:100%` sidesteps this: with no
+   declared width to fall back on, the browser is forced to size the
+   control from the containing block (100%) rather than its content. */
 input[type="date"],
 input[type="time"] {
   color-scheme: dark;
   box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
+  width: 0;
+  min-width: 100%;
   max-width: 100%;
 }
 

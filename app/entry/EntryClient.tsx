@@ -300,31 +300,37 @@ export default function EntryClient({ user, venues }: Props) {
         <Section title="Shift Details">
           {/* Date */}
           <Field label="Date">
-            <input
-              type="date"
-              value={form.entryDate}
-              onChange={(e) => setField("entryDate", e.target.value)}
-              className="input-base w-full"
-            />
+            <div className="min-w-0 overflow-hidden">
+              <input
+                type="date"
+                value={form.entryDate}
+                onChange={(e) => setField("entryDate", e.target.value)}
+                className="input-base w-full"
+              />
+            </div>
           </Field>
 
           {/* Clock in / out */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Clock In">
-              <input
-                type="time"
-                value={form.clockIn}
-                onChange={(e) => setField("clockIn", e.target.value)}
-                className="input-base w-full"
-              />
+              <div className="min-w-0 overflow-hidden">
+                <input
+                  type="time"
+                  value={form.clockIn}
+                  onChange={(e) => setField("clockIn", e.target.value)}
+                  className="input-base w-full"
+                />
+              </div>
             </Field>
             <Field label="Clock Out">
-              <input
-                type="time"
-                value={form.clockOut}
-                onChange={(e) => setField("clockOut", e.target.value)}
-                className="input-base w-full"
-              />
+              <div className="min-w-0 overflow-hidden">
+                <input
+                  type="time"
+                  value={form.clockOut}
+                  onChange={(e) => setField("clockOut", e.target.value)}
+                  className="input-base w-full"
+                />
+              </div>
             </Field>
           </div>
 
