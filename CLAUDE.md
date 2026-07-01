@@ -234,8 +234,8 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Phase 5 complete (code-side) — 2026-07-01. Awaiting live
-Vercel URL and Shahnawaz's go-live confirmation.
+**Last updated:** Phase 5 complete, live on Vercel — 2026-07-01. Awaiting
+Shahnawaz's go-live confirmation before staff use this day to day.
 
 ### Completed
 
@@ -395,11 +395,12 @@ Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
   copy was already in good shape (e.g. "Should have collected" / "Difference"
   instead of "variance"/"reconciliation", per the original spec).
 - `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
-- **Live URL**: `<TBD — fill in once the Vercel project is connected>`
+- **Live URL**: https://lunaro-ops-app.vercel.app
 
 ### In progress
-- Nothing code-side. Awaiting the live Vercel URL from Shahnawaz to finish
-  the CLAUDE.md update, then his go-live confirmation per the Phase 5 stop.
+- Nothing code-side. Live at https://lunaro-ops-app.vercel.app — awaiting
+  Shahnawaz's go-live confirmation per the Phase 5 stop before treating
+  this as the version staff use day to day.
 
 ### Known issues
 - See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
@@ -445,7 +446,7 @@ Two UX issues found during Phase 4 testing, fixed before starting Phase 5:
   role-aware), `/attendance` + `/dashboard` + `/entries` (owner-only).
   `components/BottomNav.tsx` renders the role-appropriate tab set plus
   sign-out on every authenticated screen.
-- **Live URL**: `<TBD — fill in once the Vercel project is connected>`
+- **Live URL**: https://lunaro-ops-app.vercel.app
 
 ## Adding a New Employee
 
