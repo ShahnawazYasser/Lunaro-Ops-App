@@ -43,9 +43,16 @@ body {
 }
 
 /* ── Native input theming ─────────────────────────────────────────── */
+/* iOS Safari quirk: date/time inputs render at an intrinsic content width
+   and don't reliably honor width:100% from a flex/grid child the way text
+   inputs do, which can overflow their card. Force box-sizing + width. */
 input[type="date"],
 input[type="time"] {
   color-scheme: dark;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Remove number input spinners */

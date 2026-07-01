@@ -592,7 +592,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>
         {label}
       </label>
