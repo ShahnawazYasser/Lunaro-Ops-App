@@ -234,12 +234,12 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** PWA Part 3 of 3 partially verified — 2026-07-01. Phase 5
-(deploy + harden) is done and live. PWA support (manifest/icons, service
-worker, and this final verification pass) is code-complete, but Part 3's
-real-device checks (phone install, visual browser regression) still need
-Shahnawaz to run them — see "In progress" below. Still awaiting
-Shahnawaz's go-live confirmation before staff use this day to day.
+**Last updated:** Live — 2026-07-01. Phase 5 (deploy + harden) and all 3
+PWA parts (manifest/icons, service worker, final verification) are done
+and confirmed working, including all 4 real-device checks (browser
+regression, phone install, installed-app data freshness, console check).
+Shahnawaz confirmed the app is live — Ahsan and Farhan use this day to
+day now.
 
 ### Completed
 
@@ -551,45 +551,35 @@ that was OK — verified `netProfit` reverted to 5,000 after cleanup. Any
 future write-testing against this app should assume it's hitting real
 data and ask before running, not after.
 
+**PWA Part 3 — real-device checks, confirmed by Shahnawaz**
+All 4 outstanding checks passed, no fixes needed:
+1. Plain-browser regression (all 3 users, all 5 screens) — working
+2. Real phone install via "Add to Home Screen" — correct icon,
+   standalone mode, fast repeat load — working
+3. Data freshness from the installed app specifically (proves the
+   service worker doesn't intercept `/api/*` in real standalone mode)
+   — working
+4. Console check in the installed app — no errors, no service worker
+   registration failures
+
+**PWA support (all 3 parts) is fully closed out.**
+
 ### In progress
-- **Part 3's real-device checks were not run this session** (Chrome MCP
-  unreachable) — these are what's actually left to close out PWA support:
-  1. **Plain-browser regression** (not installed): log in as each of the
-     three users in a normal browser tab, click through Entry, Reimburse,
-     Attendance, Dashboard, Entries — confirm every form/button/live
-     calculation still works exactly as before. (The server-side routing
-     check above is a good proxy but doesn't exercise client-side
-     rendering or interaction.)
-  2. **Real phone install**: remove any existing home screen icon,
-     re-add via "Add to Home Screen" so it picks up the final
-     manifest + service worker, confirm the icon is correct, it opens in
-     standalone mode (no browser address bar), and a second open feels
-     noticeably faster than the first.
-  3. **Data freshness from the installed app specifically**: open
-     Dashboard on the installed app, note net profit, submit a change
-     (from the same or another device), refresh, confirm the number
-     updates. The API-layer check above proves the server side is
-     correct; this proves the service worker itself doesn't intercept
-     `/api/*` when running in real standalone mode.
-  4. **Console check in the installed app**: DevTools (via `chrome://inspect`
-     for an installed PWA, or Safari's remote inspector on iOS) — confirm
-     no errors and no service worker registration failures.
-- If anything turns up broken in the four checks above, fix it and
-  re-verify — stay within "fix what Parts 1–2 broke," no new features.
-- Core app is code-complete and live at https://lunaro-ops-app.vercel.app
-  — awaiting Shahnawaz's go-live confirmation per the Phase 5 stop before
-  treating this as the version staff use day to day.
+- Nothing. Core app and all 3 PWA parts are complete, verified, and live
+  at https://lunaro-ops-app.vercel.app. **Shahnawaz confirmed go-live —
+  Ahsan and Farhan use this day to day now.**
 
 ### Known issues
 - See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
   has an unfixed, latent month-end date bug (same fix pattern as the one
-  already applied to `/api/entries`).
+  already applied to `/api/entries`). Low risk, not yet hit in practice,
+  fine to leave until it comes up or a maintenance pass touches that file.
 
 ### Next phase
-- Finish the four outstanding Part 3 device checks above. Once confirmed,
-  PWA support (all 3 parts) is fully closed out.
-- Core app: go-live checkpoint still open — not yet defined as "next
-  phase" until Shahnawaz confirms.
+- None queued. The app is live and in daily use — future work will come
+  as new requests (bug reports, feature asks, the Lunaro OS integration
+  mentioned as a future phase at the top of this doc) rather than a
+  pre-planned phase.
 
 ---
 
