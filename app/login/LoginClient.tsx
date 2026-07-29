@@ -39,6 +39,11 @@ export default function LoginClient() {
         if (res.ok) {
           // Hard redirect to "/" — middleware sends each role to its landing page
           window.location.href = "/";
+        } else if (res.status === 429) {
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          triggerShake();
+          setPin("");
+          setError(data?.error ?? "Too many attempts. Wait 15 minutes and try again.");
         } else {
           triggerShake();
           setPin("");

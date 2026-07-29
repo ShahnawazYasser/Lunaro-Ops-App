@@ -75,15 +75,17 @@ create table public.entry_expenses (
 -- Money the company owes an employee back (personal out-of-pocket costs).
 -- NOT linked to a specific shift — independent liability.
 create table public.reimbursements (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid not null references public.users (id) on delete cascade,
-  category    text not null check (category in ('Petrol', 'Food', 'Misc')),
-  amount      numeric(10,2) not null,
-  description text,
-  receipt_url text,
-  status      text not null default 'pending' check (status in ('pending', 'approved', 'paid')),
-  created_at  timestamptz not null default now(),
-  updated_at  timestamptz not null default now()
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references public.users (id) on delete cascade,
+  category     text not null check (category in ('Petrol', 'Food', 'Misc')),
+  amount       numeric(10,2) not null,
+  description  text,
+  receipt_url  text,
+  status       text not null default 'pending' check (status in ('pending', 'approved', 'paid')),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
+  expense_date date not null default current_date,
+  venue_id     text references public.venues (id)
 );
 
 -- ─── Attendance Overrides ────────────────────────────────────────────────────
@@ -99,6 +101,15 @@ create table public.attendance_overrides (
 
   unique (user_id, override_date)
 );
+
+-- ─── Login Attempts ──────────────────────────────────────────────────────────
+-- Tracks failed PIN attempts for rate limiting. A row per failed attempt;
+-- deleted for a name on that name's successful login.
+create table public.login_attempts (
+  name         text not null,
+  attempted_at timestamptz not null default now()
+);
+create index login_attempts_name_time on public.login_attempts (name, attempted_at);
 
 -- ─── Updated-at triggers ─────────────────────────────────────────────────────
 create or replace function public.set_updated_at()
@@ -117,6 +128,23 @@ create trigger reimbursements_updated_at
   before update on public.reimbursements
   for each row execute function public.set_updated_at();
 
+-- ─── Atomic expense replace ──────────────────────────────────────────────────
+-- Replaces all entry_expenses for a shift in a single transaction (delete +
+-- insert), so a failed insert can never leave a shift's expenses wiped out.
+create or replace function public.replace_entry_expenses(
+  p_shift_entry_id uuid,
+  p_expenses jsonb  -- array of {description, amount}
+) returns void language plpgsql as $$
+begin
+  delete from public.entry_expenses where shift_entry_id = p_shift_entry_id;
+  insert into public.entry_expenses (shift_entry_id, description, amount)
+  select p_shift_entry_id,
+         e->>'description',
+         (e->>'amount')::numeric
+  from jsonb_array_elements(p_expenses) e;
+end;
+$$;
+
 -- ─── Row-Level Security ───────────────────────────────────────────────────────
 alter table public.users               enable row level security;
 alter table public.venues              enable row level security;
@@ -124,6 +152,7 @@ alter table public.shift_entries       enable row level security;
 alter table public.entry_expenses      enable row level security;
 alter table public.reimbursements      enable row level security;
 alter table public.attendance_overrides enable row level security;
+alter table public.login_attempts       enable row level security;
 
 -- venues: publicly readable (no auth needed for the dropdown list)
 create policy "venues_public_read"

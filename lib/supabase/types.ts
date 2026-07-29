@@ -258,9 +258,32 @@ export interface Database {
           },
         ];
       };
+      login_attempts: {
+        Row: {
+          name: string;
+          attempted_at: string;
+        };
+        Insert: {
+          name: string;
+          attempted_at?: string;
+        };
+        Update: {
+          name?: string;
+          attempted_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      replace_entry_expenses: {
+        Args: {
+          p_shift_entry_id: string;
+          p_expenses: { description: string; amount: number }[];
+        };
+        Returns: void;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

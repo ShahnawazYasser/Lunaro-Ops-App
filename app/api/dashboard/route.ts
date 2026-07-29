@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { monthRange, todayInKarachi } from "@/lib/dates";
+import { deriveAttendance } from "@/lib/attendance";
 
 const FREE_PRINT_COST = 500;
 
@@ -43,13 +45,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
   }
 
-  const [yearStr, monStr] = month.split("-");
-  const year = Number(yearStr);
-  const mon = Number(monStr);
-  const daysInMonth = new Date(year, mon, 0).getDate();
-  const startDate = `${yearStr}-${monStr}-01`;
-  const endDate = `${yearStr}-${monStr}-${String(daysInMonth).padStart(2, "0")}`;
-  const todayStr = new Date().toISOString().split("T")[0];
+  const { startDate, endDate } = monthRange(month);
+  const daysInMonth = Number(endDate.split("-")[2]);
+  const todayStr = todayInKarachi();
 
   // Shift entries for the month
   const { data: shifts, error: shiftErr } = await supabaseAdmin
@@ -139,24 +137,19 @@ export async function GET(request: NextRequest) {
 
   if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
 
-  const shiftSet = new Set<string>(shiftRows.map((s) => `${s.user_id}|${s.entry_date}`));
-  const overrideMap = new Map<string, boolean>();
-  for (const o of overrides ?? []) {
-    overrideMap.set(`${o.user_id}|${o.override_date}`, o.is_present);
-  }
+  const derivedAttendance = deriveAttendance(
+    employeeRows,
+    shiftRows.map((s) => ({ user_id: s.user_id, entry_date: s.entry_date })),
+    overrides ?? [],
+    month,
+    todayStr
+  );
 
-  const attendance: AttendanceSummaryRow[] = employeeRows.map((emp) => {
-    let daysPresent = 0;
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${yearStr}-${monStr}-${String(day).padStart(2, "0")}`;
-      if (dateStr > todayStr) continue; // future days don't count either way
-
-      const key = `${emp.id}|${dateStr}`;
-      const isPresent = overrideMap.has(key) ? overrideMap.get(key)! : shiftSet.has(key);
-      if (isPresent) daysPresent++;
-    }
-    return { id: emp.id, name: emp.name, daysPresent };
-  });
+  const attendance: AttendanceSummaryRow[] = derivedAttendance.map((emp) => ({
+    id: emp.id,
+    name: emp.name,
+    daysPresent: emp.days.filter((d) => d.status === "present").length,
+  }));
 
   const netProfit = totalRevenue - operationalExpenses - reimbursements;
 

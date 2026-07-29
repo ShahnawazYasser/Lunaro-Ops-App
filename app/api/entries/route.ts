@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { monthRange } from "@/lib/dates";
 
 interface ExpenseInput {
   description: string;
@@ -20,10 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
   }
 
-  const [year, mon] = month.split("-");
-  const daysInMonth = new Date(Number(year), Number(mon), 0).getDate();
-  const startDate = `${year}-${mon}-01`;
-  const endDate = `${year}-${mon}-${String(daysInMonth).padStart(2, "0")}`;
+  const { startDate, endDate } = monthRange(month);
 
   const { data, error } = await supabaseAdmin
     .from("shift_entries")
@@ -157,32 +155,21 @@ export async function POST(request: NextRequest) {
     entryId = inserted.id;
   }
 
-  // Replace expenses: delete all existing, re-insert
-  const { error: deleteError } = await supabaseAdmin
-    .from("entry_expenses")
-    .delete()
-    .eq("shift_entry_id", entryId);
-
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
-  }
-
+  // Replace expenses atomically (delete + insert in one DB transaction)
   const validExpenses = expenses.filter(
     (e) => typeof e.description === "string" && e.description.trim() && e.amount > 0
   );
 
-  if (validExpenses.length > 0) {
-    const { error: expError } = await supabaseAdmin.from("entry_expenses").insert(
-      validExpenses.map((e) => ({
-        shift_entry_id: entryId,
-        description: e.description.trim(),
-        amount: e.amount,
-      }))
-    );
+  const { error: replaceError } = await supabaseAdmin.rpc("replace_entry_expenses", {
+    p_shift_entry_id: entryId,
+    p_expenses: validExpenses.map((e) => ({
+      description: e.description.trim(),
+      amount: e.amount,
+    })),
+  });
 
-    if (expError) {
-      return NextResponse.json({ error: expError.message }, { status: 500 });
-    }
+  if (replaceError) {
+    return NextResponse.json({ error: replaceError.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, entryId, updated: isUpdate }, { status: isUpdate ? 200 : 201 });

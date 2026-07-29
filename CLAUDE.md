@@ -564,22 +564,75 @@ All 4 outstanding checks passed, no fixes needed:
 
 **PWA support (all 3 parts) is fully closed out.**
 
+**Phase A — Architecture Review Fixes (bugs + structural issues, no new features)**
+- Bug fixed: `/api/reimbursements` GET computed the month's `endDate` via
+  `new Date(y, m, 0).toISOString().split("T")[0]`, which in Asia/Karachi
+  (UTC+5) silently rolled back to the second-to-last calendar day —
+  reimbursements logged on the last day of a month vanished from that
+  month's list and totals. Verified: for `month=2026-06` the old logic
+  produced `2026-06-29`, the new logic produces `2026-06-30`.
+- Bug fixed: `/api/attendance` and `/api/dashboard` computed "today" via
+  `new Date().toISOString().split("T")[0]` (UTC), so between midnight and
+  5:00 AM Karachi time the app treated "today" as yesterday, corrupting
+  the future/past day boundary used for attendance and dashboard figures.
+- **`lib/dates.ts`** (new) — the only place date-boundary math should
+  happen. `monthRange(month)` returns `{ startDate, endDate }` for a
+  `"YYYY-MM"` string using `new Date(year, monthNum, 0).getDate()` (no
+  `toISOString` round-trip). `todayInKarachi()` returns today as
+  `"YYYY-MM-DD"` via `Intl.DateTimeFormat` with `timeZone: "Asia/Karachi"`.
+  **Inline date math (`new Date(...).toISOString().split("T")[0]` or
+  manual days-in-month + padStart) is now banned in routes — always
+  import from `lib/dates.ts`.** `/api/entries`, `/api/reimbursements`,
+  `/api/attendance`, `/api/dashboard` all updated to use it.
+- **`lib/attendance.ts`** (new) — `deriveAttendance(employees, shifts,
+  overrides, month, todayStr)` is the one place the present/absent/future
+  derivation rule lives (shift row = present, unless an override row
+  wins; days after `todayStr` are `"future"`). Previously duplicated
+  inline in `/api/attendance` and `/api/dashboard`; both now call this.
+  **Any future attendance logic should call this function, not
+  reimplement the rule.** Verified byte-identical JSON output from both
+  routes before/after the refactor, for two different months, against
+  the live database.
+- `supabase_schema.sql` was stale — the live DB had `expense_date` and
+  `venue_id` columns on `reimbursements` that the file didn't. Introspected
+  the live DB via the Supabase MCP server and brought the file back in
+  sync (file → matches DB; DB was not changed for this).
+- Atomic expense replace: POST `/api/entries` used to delete all
+  `entry_expenses` for a shift then re-insert as two separate calls — a
+  failed insert after the delete silently lost that shift's expenses.
+  Added a Postgres function `public.replace_entry_expenses(p_shift_entry_id,
+  p_expenses jsonb)` (delete + insert in one transaction) via the Supabase
+  MCP server, added to `supabase_schema.sql`, and the route now calls it
+  via `supabaseAdmin.rpc(...)` instead of two separate calls.
+- Login rate limiting: `/api/auth/login` previously allowed unlimited PIN
+  attempts. Added `public.login_attempts` table (name + timestamp, via
+  MCP + `supabase_schema.sql`). Route now counts failed attempts for a
+  name in the last 15 minutes before checking the PIN; 5+ returns 429
+  with `"Too many attempts. Wait 15 minutes and try again."`; every failed
+  attempt inserts a row; a successful login deletes that name's rows.
+  `app/login/LoginClient.tsx` shows the 429 message verbatim instead of
+  the generic "Wrong PIN" copy.
+- `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+  `grep -rn toISOString app/ lib/` → one remaining use, in
+  `app/api/auth/login/route.ts` for the rate-limit lookback window
+  (`Date.now() - 15min`), which is an absolute-time comparison, not a
+  calendar-day boundary — not a bug, left as-is.
+
 ### In progress
 - Nothing. Core app and all 3 PWA parts are complete, verified, and live
   at https://lunaro-ops-app.vercel.app. **Shahnawaz confirmed go-live —
-  Ahsan and Farhan use this day to day now.**
+  Ahsan and Farhan use this day to day now.** Phase A (bug/structure fixes)
+  is complete on the `develop` branch, not yet merged to `master`/deployed.
 
 ### Known issues
-- See "Bug found and fixed during Phase 4" above — `/api/reimbursements`
-  has an unfixed, latent month-end date bug (same fix pattern as the one
-  already applied to `/api/entries`). Low risk, not yet hit in practice,
-  fine to leave until it comes up or a maintenance pass touches that file.
+- None currently tracked. The reimbursements month-end bug and the
+  duplicated attendance derivation from earlier phases were fixed in
+  Phase A above.
 
 ### Next phase
-- None queued. The app is live and in daily use — future work will come
-  as new requests (bug reports, feature asks, the Lunaro OS integration
-  mentioned as a future phase at the top of this doc) rather than a
-  pre-planned phase.
+- Phase A is done; Phases B–F of the architecture-review round are not
+  yet defined/started. Do not begin them without an explicit phase
+  prompt.
 
 ---
 

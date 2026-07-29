@@ -26,6 +26,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid PIN format" }, { status: 400 });
   }
 
+  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { count: recentFailures, error: attemptsError } = await supabaseAdmin
+    .from("login_attempts")
+    .select("*", { count: "exact", head: true })
+    .eq("name", name)
+    .gte("attempted_at", fifteenMinutesAgo);
+
+  if (attemptsError) {
+    return NextResponse.json({ error: attemptsError.message }, { status: 500 });
+  }
+
+  if ((recentFailures ?? 0) >= 5) {
+    return NextResponse.json(
+      { error: "Too many attempts. Wait 15 minutes and try again." },
+      { status: 429 }
+    );
+  }
+
   const { data: user, error } = await supabaseAdmin
     .from("users")
     .select("id, name, role, pin_hash")
@@ -33,13 +51,17 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (error || !user) {
+    await supabaseAdmin.from("login_attempts").insert({ name });
     return NextResponse.json({ error: "User not found" }, { status: 401 });
   }
 
   const pinMatch = await bcrypt.compare(pin, user.pin_hash);
   if (!pinMatch) {
+    await supabaseAdmin.from("login_attempts").insert({ name });
     return NextResponse.json({ error: "Incorrect PIN" }, { status: 401 });
   }
+
+  await supabaseAdmin.from("login_attempts").delete().eq("name", name);
 
   const token = await createSessionToken({
     userId: user.id,

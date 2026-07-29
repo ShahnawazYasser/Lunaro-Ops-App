@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ReimbursementCategory } from "@/lib/supabase/types";
+import { monthRange } from "@/lib/dates";
 
 // ── GET /api/reimbursements?month=2026-06&userId=all ──────────────────────
 export async function GET(request: NextRequest) {
@@ -16,12 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid month format (expected YYYY-MM)" }, { status: 400 });
   }
 
-  const [year, mon] = month.split("-");
-  const startDate = `${year}-${mon}-01`;
-  // Last day of month
-  const endDate = new Date(Number(year), Number(mon), 0)
-    .toISOString()
-    .split("T")[0];
+  const { startDate, endDate } = monthRange(month);
 
   let query = supabaseAdmin
     .from("reimbursements")
