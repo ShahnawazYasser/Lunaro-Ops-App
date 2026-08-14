@@ -54,6 +54,12 @@ create table public.shift_entries (
   event_name          text,   -- used when venue_id = 'event'
   notes               text,
 
+  -- Owner reconciliation: once true, this row is finalized — employee
+  -- resubmission for this user+date is rejected (see replace_entry_expenses'
+  -- neighboring POST /api/entries lock rule).
+  cash_collected      boolean not null default false,
+  cash_collected_at   timestamptz,
+
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
 

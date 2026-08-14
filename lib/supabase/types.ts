@@ -69,6 +69,8 @@ export interface Database {
           clock_out: string | null;
           event_name: string | null;
           notes: string | null;
+          cash_collected: boolean;
+          cash_collected_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -89,6 +91,8 @@ export interface Database {
           clock_out?: string | null;
           event_name?: string | null;
           notes?: string | null;
+          cash_collected?: boolean;
+          cash_collected_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -109,6 +113,8 @@ export interface Database {
           clock_out?: string | null;
           event_name?: string | null;
           notes?: string | null;
+          cash_collected?: boolean;
+          cash_collected_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
