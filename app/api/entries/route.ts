@@ -27,11 +27,13 @@ export async function GET(request: NextRequest) {
     .from("shift_entries")
     .select(`
       id, user_id, entry_date, venue_id, event_name,
-      total_prints, free_prints, cash_received, bank_received,
-      clock_in, clock_out, created_at,
+      total_prints, extra_prints, system_prints_500, system_prints_250,
+      free_prints, waste_prints, cash_received, bank_received,
+      clock_in, clock_out, notes, cash_collected, cash_collected_at,
+      created_at,
       users!inner(name),
       venues!inner(name),
-      entry_expenses(amount)
+      entry_expenses(description, amount)
     `)
     .gte("entry_date", startDate)
     .lte("entry_date", endDate)
@@ -103,10 +105,20 @@ export async function POST(request: NextRequest) {
   // Check for existing entry for this user+date
   const { data: existing } = await supabaseAdmin
     .from("shift_entries")
-    .select("id")
+    .select("id, cash_collected")
     .eq("user_id", userId)
     .eq("entry_date", entryDate)
     .maybeSingle();
+
+  if (existing?.cash_collected) {
+    return NextResponse.json(
+      {
+        error:
+          "This entry has been finalized by the owner. Contact them to make changes.",
+      },
+      { status: 409 }
+    );
+  }
 
   const entryFields = {
     user_id: userId,

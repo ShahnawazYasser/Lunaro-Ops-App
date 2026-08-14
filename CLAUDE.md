@@ -618,21 +618,67 @@ All 4 outstanding checks passed, no fixes needed:
   (`Date.now() - 15min`), which is an absolute-time comparison, not a
   calendar-day boundary — not a bug, left as-is.
 
+**Phase B — Entries Detail View + Cash-Collected Lock**
+- Migration (via Supabase MCP, added to `supabase_schema.sql`): `shift_entries`
+  gains `cash_collected boolean not null default false` and
+  `cash_collected_at timestamptz`.
+- `GET /api/entries` select expanded to return every `shift_entries` column
+  (was previously missing `extra_prints`, `system_prints_500`,
+  `system_prints_250`, `waste_prints`, `notes`, `cash_collected`,
+  `cash_collected_at`) plus `entry_expenses(description, amount)` (was
+  `amount` only). `EntryRow` in `EntriesClient.tsx` updated to match.
+- **New owner-only route `PATCH /api/entries/[id]/collect`** — body
+  `{ collected: boolean }`; sets `cash_collected` and `cash_collected_at`
+  (`now()` when true, `null` when false). 403 for non-owners. Only touches
+  those two columns — no other shift fields affected by this call.
+- **Permanent behavior contract — the collected lock:**
+  **Once an owner marks a `shift_entries` row `cash_collected = true`,
+  that row is finalized. `POST /api/entries` (the employee submission
+  route) rejects any resubmission for that user+date with `409` and the
+  message "This entry has been finalized by the owner. Contact them to
+  make changes." — this is intentional and must not be "fixed" or bypassed
+  in future work without an explicit decision to do so.** Rationale:
+  submission is an upsert on `(user_id, entry_date)`; without this lock an
+  employee resubmitting a date the owner already reconciled would silently
+  overwrite the figures and reset the collected flag. The lock is enforced
+  route-wide (there is currently no separate owner-edit path, so this is
+  correct as-is; a future owner-edit path, if built, must bypass this
+  check explicitly rather than removing it).
+  `app/entry/EntryClient.tsx` surfaces the 409 as a persistent red banner
+  above the form (not a transient toast, since the employee needs to
+  actually read and act on it) — cleared when they change the date field.
+- `app/entries/EntriesClient.tsx`: cards are now tappable (accordion, one
+  section open at a time) showing full shift/print/money/expense/notes
+  detail, with a "Should have collected" and "Difference vs expected" line
+  matching the same math used on `/entry`. Each card also gets a
+  cash-collected checkbox (owner only screen) — optimistic toggle via the
+  PATCH route, reverts on failure, with a distinct hit area (`stopPropagation`
+  on the checkbox's own click handler) so it never triggers the card's
+  expand/collapse. Collected entries get a gold border + a "Collected"
+  badge so they're scannable in the list without expanding.
+- Verified live against the production DB: hand-checked an entry's print/
+  money math against the expanded detail view; toggled `cash_collected`
+  on and off and confirmed the DB row (`cash_collected`,
+  `cash_collected_at`) both ways; confirmed a collected date returns 409
+  with the exact required message on employee resubmit; confirmed an
+  uncollected date still upserts normally (insert then update, unchanged);
+  confirmed a non-owner PATCHing the collect route gets 403. All test rows
+  cleaned up afterward — no real shift data altered.
+- `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+
 ### In progress
-- Nothing. Core app and all 3 PWA parts are complete, verified, and live
-  at https://lunaro-ops-app.vercel.app. **Shahnawaz confirmed go-live —
-  Ahsan and Farhan use this day to day now.** Phase A (bug/structure fixes)
-  is complete on the `develop` branch, not yet merged to `master`/deployed.
+- Nothing. Core app, PWA support, and Phase A are live and in daily use
+  at https://lunaro-ops-app.vercel.app. Phase B (this entry) is complete
+  on the `develop` branch, not yet merged to `master`/deployed.
 
 ### Known issues
-- None currently tracked. The reimbursements month-end bug and the
-  duplicated attendance derivation from earlier phases were fixed in
-  Phase A above.
+- None currently tracked.
 
 ### Next phase
-- Phase A is done; Phases B–F of the architecture-review round are not
-  yet defined/started. Do not begin them without an explicit phase
-  prompt.
+- Phases A and B are done; Phases C–F of the architecture-review round are
+  not yet defined/started. Do not begin them without an explicit phase
+  prompt. (Phase B's task notes a future owner-edit path as Phase C's
+  likely territory — not started here.)
 
 ---
 

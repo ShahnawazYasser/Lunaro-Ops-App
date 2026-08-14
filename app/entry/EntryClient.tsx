@@ -134,6 +134,7 @@ export default function EntryClient({ user, venues }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [lockedMessage, setLockedMessage] = useState<string | null>(null);
 
   const { fieldErrors, expenseErrors } = useMemo(() => validateForm(form), [form]);
   const hasErrors = Object.keys(fieldErrors).length > 0 || Object.keys(expenseErrors).length > 0;
@@ -190,6 +191,7 @@ export default function EntryClient({ user, venues }: Props) {
 
   const handleSubmit = async () => {
     setSubmitAttempted(true);
+    setLockedMessage(null);
 
     if (!form.venueId) {
       showToast("error", "Please select a venue");
@@ -239,6 +241,11 @@ export default function EntryClient({ user, venues }: Props) {
         setForm(blankForm());
         setSubmitAttempted(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (res.status === 409) {
+        setLockedMessage(
+          data.error ?? "This entry has been finalized by the owner. Contact them to make changes."
+        );
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
         showToast("error", data.error ?? "Something went wrong");
       }
@@ -284,6 +291,22 @@ export default function EntryClient({ user, venues }: Props) {
         </div>
       )}
 
+      {/* ── Locked entry banner ──────────────────────────────────── */}
+      {lockedMessage && (
+        <div className="max-w-lg mx-auto px-4 pt-4">
+          <div
+            className="p-3.5 rounded-xl text-sm"
+            style={{
+              backgroundColor: "rgba(196,90,74,0.15)",
+              color: "#C45A4A",
+              border: "1px solid rgba(196,90,74,0.3)",
+            }}
+          >
+            {lockedMessage}
+          </div>
+        </div>
+      )}
+
       {/* ── Page title ─────────────────────────────────────────── */}
       <div className="px-4 pt-5 pb-2 max-w-lg mx-auto">
         <h1 className="text-xl font-semibold" style={{ color: "#E8EFF5" }}>
@@ -304,7 +327,10 @@ export default function EntryClient({ user, venues }: Props) {
               <input
                 type="date"
                 value={form.entryDate}
-                onChange={(e) => setField("entryDate", e.target.value)}
+                onChange={(e) => {
+                  setField("entryDate", e.target.value);
+                  setLockedMessage(null);
+                }}
                 className="input-base w-full"
               />
             </div>
