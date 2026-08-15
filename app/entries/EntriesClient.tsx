@@ -2,8 +2,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import ShiftEntryForm, {
+  type ShiftEntryFormValues,
+  type ShiftEntryPayload,
+  type Venue,
+} from "@/components/ShiftEntryForm";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+interface Props {
+  venues: Venue[];
+}
+
+interface Toast {
+  type: "success" | "error";
+  message: string;
+}
 
 interface EntryRow {
   id: string;
@@ -24,6 +38,8 @@ interface EntryRow {
   notes: string | null;
   cash_collected: boolean;
   cash_collected_at: string | null;
+  last_edited_by: string | null;
+  last_edited_at: string | null;
   users: { name: string };
   venues: { name: string };
   entry_expenses: { description: string; amount: number }[];
@@ -61,6 +77,13 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function formatEditedAt(ts: string): string {
+  return new Date(ts).toLocaleString("en-PK", {
+    day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
+    timeZone: "Asia/Karachi",
+  });
+}
+
 function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
@@ -83,15 +106,48 @@ function venueLabel(row: EntryRow): string {
   return row.venue_id === "event" ? (row.event_name ?? "Event") : row.venues.name;
 }
 
+// DB row → the shared form's string-based value shape
+function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
+  return {
+    entryDate: row.entry_date,
+    clockIn: row.clock_in?.slice(0, 5) ?? "",
+    clockOut: row.clock_out?.slice(0, 5) ?? "",
+    venueId: row.venue_id,
+    eventName: row.event_name ?? "",
+    totalPrints: String(row.total_prints),
+    extraPrints: String(row.extra_prints),
+    systemPrints500: String(row.system_prints_500),
+    systemPrints250: String(row.system_prints_250),
+    freePrints: String(row.free_prints),
+    wastePrints: String(row.waste_prints),
+    cashReceived: String(row.cash_received),
+    bankReceived: String(row.bank_received),
+    expenses: row.entry_expenses.length
+      ? row.entry_expenses.map((e) => ({
+          description: e.description,
+          amount: String(e.amount),
+        }))
+      : [{ description: "", amount: "" }],
+  };
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function EntriesClient() {
+export default function EntriesClient({ venues }: Props) {
   const [month, setMonth] = useState(currentMonth);
   const [rows, setRows] = useState<EntryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pendingCollect, setPendingCollect] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<EntryRow | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+
+  const showToast = useCallback((type: Toast["type"], message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
 
   const fetchEntries = useCallback(async (m: string) => {
     setLoading(true);
@@ -161,8 +217,83 @@ export default function EntriesClient() {
     }
   };
 
+  const saveEdit = async (row: EntryRow, payload: ShiftEntryPayload) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/entries/${row.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json()) as { error?: string };
+
+      if (res.ok) {
+        setEditing(null);
+        showToast("success", "Entry updated");
+        await fetchEntries(month);
+      } else {
+        showToast("error", data.error ?? "Couldn't save the changes");
+      }
+    } catch {
+      showToast("error", "Could not save — check your connection");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
+          style={{
+            backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A",
+            color: "#fff",
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+
+      {/* Edit sheet */}
+      {editing && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: "#0B1929" }}>
+          <header
+            className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-3"
+            style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}
+          >
+            <button
+              onClick={() => setEditing(null)}
+              className="text-sm px-3 py-1.5 rounded-lg shrink-0"
+              style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}
+            >
+              Cancel
+            </button>
+            <div className="min-w-0 text-right">
+              <p className="text-sm font-semibold truncate" style={{ color: "#C9A84C" }}>
+                Edit entry
+              </p>
+              <p className="text-xs truncate" style={{ color: "#8A9BAD" }}>
+                {editing.users.name} · {formatDate(editing.entry_date)}
+              </p>
+            </div>
+          </header>
+
+          <main className="max-w-lg mx-auto px-4 py-5 pb-16">
+            <ShiftEntryForm
+              venues={venues}
+              initialValues={rowToFormValues(editing)}
+              submitLabel="Save changes"
+              submitting={saving}
+              dateReadOnly
+              onSubmit={(payload) => saveEdit(editing, payload)}
+              onError={(msg) => showToast("error", msg)}
+            />
+          </main>
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-20 px-4 py-3"
         style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
@@ -282,14 +413,24 @@ export default function EntriesClient() {
                         <p className="text-xs" style={{ color: "#8A9BAD" }}>
                           {venueLabel(row)} · {formatDate(row.entry_date)}
                         </p>
-                        {row.cash_collected && (
-                          <span
-                            className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
-                          >
-                            Collected
-                          </span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {row.cash_collected && (
+                            <span
+                              className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
+                            >
+                              Collected
+                            </span>
+                          )}
+                          {row.last_edited_by && (
+                            <span
+                              className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                              style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.45)" }}
+                            >
+                              Edited
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <span className="text-sm font-semibold shrink-0" style={{ color: net >= 0 ? "#4AC47A" : "#C45A4A" }}>
@@ -358,6 +499,20 @@ export default function EntriesClient() {
                         <p className="text-xs" style={{ color: "#E8EFF5" }}>{row.notes}</p>
                       </DetailSection>
                     )}
+
+                    {row.last_edited_at && (
+                      <p className="text-xs" style={{ color: "#8A9BAD" }}>
+                        Edited by the owner on {formatEditedAt(row.last_edited_at)}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={() => setEditing(row)}
+                      className="w-full py-3 rounded-xl text-sm font-semibold"
+                      style={{ backgroundColor: "#C9A84C", color: "#0B1929" }}
+                    >
+                      Edit
+                    </button>
                   </div>
                 )}
               </div>
