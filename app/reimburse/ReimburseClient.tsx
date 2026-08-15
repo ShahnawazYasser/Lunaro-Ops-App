@@ -17,17 +17,23 @@ interface Props {
 const CATEGORIES = ["Petrol", "Food", "Misc"] as const;
 type Category = (typeof CATEGORIES)[number];
 
-interface ReimbursementRow {
+// Phase D: this screen now reads/writes the unified `expenses` table via
+// /api/expenses. It deliberately pins itself to the employee-paid slice
+// (paidBy=employee on GET, paid_by='employee' on POST) so it behaves exactly
+// as it did when it was backed by the reimbursements table — including for
+// the owner, who logs their own out-of-pocket costs here. Phase E redesigns
+// this screen around the wider model.
+interface ExpenseRow {
   id: string;
-  user_id: string;
-  category: Category;
+  payer_user_id: string | null;
+  category: string;
   amount: number;
   description: string | null;
   receipt_url: string | null;
-  status: string;
+  reimbursement_status: string | null;
   expense_date: string;
   venue_id: string | null;
-  users: { name: string };
+  payer: { name: string } | null;
   venues: { name: string } | null;
 }
 
@@ -94,7 +100,7 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
   const [filterUserId, setFilterUserId] = useState<string>("all");
 
   // List state
-  const [rows, setRows] = useState<ReimbursementRow[]>([]);
+  const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -119,11 +125,15 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
     setListLoading(true);
     setListError(null);
     try {
-      const params = new URLSearchParams({ month: filterMonth, userId: filterUserId });
-      const res = await fetch(`/api/reimbursements?${params}`);
+      const params = new URLSearchParams({
+        month: filterMonth,
+        userId: filterUserId,
+        paidBy: "employee",
+      });
+      const res = await fetch(`/api/expenses?${params}`);
       if (res.ok) {
-        const data = (await res.json()) as { reimbursements: ReimbursementRow[] };
-        setRows(data.reimbursements);
+        const data = (await res.json()) as { expenses: ExpenseRow[] };
+        setRows(data.expenses);
       } else {
         const e = (await res.json()) as { error?: string };
         setListError(e.error ?? "Failed to load expenses");
@@ -153,7 +163,7 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
         setUploading(true);
         const fd = new FormData();
         fd.append("file", receiptFile);
-        const upRes = await fetch("/api/reimbursements/upload", { method: "POST", body: fd });
+        const upRes = await fetch("/api/expenses/upload", { method: "POST", body: fd });
         setUploading(false);
 
         if (!upRes.ok) {
@@ -166,7 +176,7 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
         receiptUrl = upData.url;
       }
 
-      const res = await fetch("/api/reimbursements", {
+      const res = await fetch("/api/expenses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -174,8 +184,13 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
           amount: Number(form.amount),
           venueId: form.venueId || null,
           expenseDate: form.expenseDate,
-          note: form.note,
+          description: form.note,
           receiptUrl,
+          // Ignored for employee callers (the API forces these anyway); sent
+          // so the owner logging their own out-of-pocket cost here still
+          // creates an employee-paid, reimbursable row, as it did before.
+          paidBy: "employee",
+          payerUserId: user.id,
         }),
       });
 
@@ -201,7 +216,7 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
   // Totals per employee for the selected month
   const totals = employees.reduce<Record<string, number>>((acc, emp) => {
     acc[emp.id] = rows
-      .filter((r) => r.user_id === emp.id && r.status !== "paid")
+      .filter((r) => r.payer_user_id === emp.id && r.reimbursement_status !== "paid")
       .reduce((s, r) => s + r.amount, 0);
     return acc;
   }, {});
@@ -399,12 +414,12 @@ export default function ReimburseClient({ user, venues, employees }: Props) {
                         {row.category}
                       </span>
                       <span className="text-xs" style={{ color: "#8A9BAD" }}>
-                        {row.users?.name}
+                        {row.payer?.name}
                       </span>
                       {row.venues && (
                         <span className="text-xs" style={{ color: "#8A9BAD" }}>· {row.venues.name}</span>
                       )}
-                      <StatusBadge status={row.status} />
+                      <StatusBadge status={row.reimbursement_status} />
                     </div>
                     {row.description && (
                       <p className="text-sm mt-1 truncate" style={{ color: "#E8EFF5" }}>{row.description}</p>
@@ -469,13 +484,14 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+// Two-state now (Phase D): a thing is reimbursed or it isn't. The old
+// 'approved' middle state was folded into 'pending' by the migration.
+function StatusBadge({ status }: { status: string | null }) {
   const colors: Record<string, { bg: string; text: string }> = {
     pending: { bg: "rgba(138,155,173,0.15)", text: "#8A9BAD" },
-    approved: { bg: "rgba(74,196,122,0.15)", text: "#4AC47A" },
     paid: { bg: "rgba(201,168,76,0.15)", text: "#C9A84C" },
   };
-  const c = colors[status] ?? colors["pending"];
+  const c = colors[status ?? "pending"] ?? colors["pending"];
   return (
     <span className="text-xs px-2 py-0.5 rounded-full font-medium"
       style={{ backgroundColor: c.bg, color: c.text }}>

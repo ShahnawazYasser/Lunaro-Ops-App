@@ -21,8 +21,13 @@ export interface AttendanceSummaryRow {
 
 export interface DashboardResponse {
   totalRevenue: number;
+  // Kept for the current dashboard UI: the shift-linked slice of expenses.
   operationalExpenses: number;
+  // Kept for the current dashboard UI: employee-paid expenses, all statuses.
   reimbursements: number;
+  // Phase D additions — the honest split. Phase E reworks the UI onto these.
+  totalExpenses: number;
+  owedToEmployees: number;
   netProfit: number;
   freePrintsCount: number;
   freePrintsCost: number;
@@ -59,29 +64,34 @@ export async function GET(request: NextRequest) {
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
-  const shiftIds = shiftRows.map((s) => s.id);
 
-  // Operational expenses tied to this month's shifts
-  let operationalExpenses = 0;
-  if (shiftIds.length > 0) {
-    const { data: expenses, error: expErr } = await supabaseAdmin
-      .from("entry_expenses")
-      .select("amount")
-      .in("shift_entry_id", shiftIds);
-
-    if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
-    operationalExpenses = (expenses ?? []).reduce((sum, e) => sum + e.amount, 0);
-  }
-
-  // Reimbursements logged this month
-  const { data: reimbRows, error: reimbErr } = await supabaseAdmin
-    .from("reimbursements")
-    .select("amount")
+  // All money out for the month, in one query (Phase D — the unified
+  // `expenses` table replaced the old entry_expenses + reimbursements pair).
+  //
+  // Accrual rule: an expense counts in the month of its expense_date,
+  // regardless of when — or whether — an employee gets reimbursed for it.
+  // Marking one paid never moves it between months.
+  const { data: expenseRows, error: expErr } = await supabaseAdmin
+    .from("expenses")
+    .select("amount, paid_by, reimbursement_status, shift_entry_id")
     .gte("expense_date", startDate)
     .lte("expense_date", endDate);
 
-  if (reimbErr) return NextResponse.json({ error: reimbErr.message }, { status: 500 });
-  const reimbursements = (reimbRows ?? []).reduce((sum, r) => sum + r.amount, 0);
+  if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
+
+  let totalExpenses = 0;
+  let operationalExpenses = 0;
+  let reimbursements = 0;
+  let owedToEmployees = 0;
+
+  for (const e of expenseRows ?? []) {
+    totalExpenses += e.amount;
+    if (e.shift_entry_id) operationalExpenses += e.amount;
+    if (e.paid_by === "employee") {
+      reimbursements += e.amount;
+      if (e.reimbursement_status === "pending") owedToEmployees += e.amount;
+    }
+  }
 
   // Venue labels
   const { data: venues, error: venueErr } = await supabaseAdmin.from("venues").select("id, name");
@@ -151,12 +161,18 @@ export async function GET(request: NextRequest) {
     daysPresent: emp.days.filter((d) => d.status === "present").length,
   }));
 
-  const netProfit = totalRevenue - operationalExpenses - reimbursements;
+  // Every row in `expenses` is money out, whoever fronted it — so net profit
+  // is simply revenue minus the whole table for the month. (operationalExpenses
+  // and reimbursements are overlapping slices of totalExpenses, not addends;
+  // never sum them.)
+  const netProfit = totalRevenue - totalExpenses;
 
   const response: DashboardResponse = {
     totalRevenue,
     operationalExpenses,
     reimbursements,
+    totalExpenses,
+    owedToEmployees,
     netProfit,
     freePrintsCount,
     freePrintsCost: freePrintsCount * FREE_PRINT_COST,
