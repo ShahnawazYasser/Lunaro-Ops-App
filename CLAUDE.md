@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-08-15 (Phase C). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-08-15 (Phase D). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -767,18 +767,165 @@ row was deleted afterward; `/api/dashboard?month=2026-12` confirmed back to
 0/0/0 and August's 16 real entries were verified untouched (none flagged
 edited).
 
+**Phase D — Unified Expenses Table (data layer + APIs; no new screens)**
+
+- **Migration run against production** via the Supabase MCP server, exactly
+  as written in `migration_expenses.sql` (kept at the repo root as the
+  locked record of what was run). Step 4's verification gate passed before
+  any renames: reimbursements 5 rows / PKR 74,500 → 5 employee-paid expense
+  rows / PKR 74,500; entry_expenses 7 rows / PKR 4,000 → 7 shift-linked
+  expense rows / PKR 4,000. Old tables were **renamed, not dropped**.
+
+- **The model — one `expenses` table for all money out.** Every rupee
+  leaving the business is one row.
+  - `paid_by = 'company'` → a normal business expense (salaries, rent, ink,
+    shift operational costs). `payer_user_id` and `reimbursement_status`
+    must both be null.
+  - `paid_by = 'employee'` → the employee fronted the money and is owed it
+    back until `reimbursement_status = 'paid'`. Both fields must be set.
+  - Enforced by the `expenses_payer_consistency` DB check constraint, and
+    re-validated in the API so callers get plain messages instead of
+    Postgres errors.
+  - **Reimbursement is no longer a table — it is a property of an expense.**
+    Either way the row always counts as an expense in P&L. Don't reintroduce
+    a separate money-out table; that's the whole point of this phase.
+  - `shift_entry_id` links the operational costs logged on a shift entry;
+    `related_user_id` records who an expense is *about* (e.g. whose Salary),
+    which is a different thing from who paid it.
+
+- **The accrual rule (important).** An expense counts in the month of its
+  `expense_date`, regardless of when — or whether — it is reimbursed.
+  Marking something paid never moves it between months. Any future
+  reporting work must preserve this.
+
+- **Categories are app-enforced, not DB-enforced** — `lib/categories.ts` is
+  the single source: `CATEGORIES` (Operational, Salary, Paper, Ink,
+  Maintenance, Petrol, Food, Rent, Transport, Venue/Event, Misc) and
+  `EMPLOYEE_CATEGORIES` (Petrol, Food, Transport, Misc — what employees may
+  log for themselves). Adding a category is a one-line change here plus a
+  deploy, with no migration. The API validates against these.
+
+- **New `/api/expenses`** (replaces `/api/reimbursements`, which was deleted
+  outright):
+  - `GET ?month=&paidBy=all|company|employee&userId=` — any authenticated
+    user. **Employees only ever receive their own employee-paid rows,
+    whatever the params say** — enforced server-side, not in the client.
+    Owner gets everything, with filters.
+  - `POST` — employee callers are forced to `paid_by='employee'`,
+    `payer_user_id=self`, `reimbursement_status='pending'`, and a category
+    from `EMPLOYEE_CATEGORIES`. Owner may use any category, choose
+    `paid_by`, set `related_user_id`, and must supply `payer_user_id` when
+    logging an employee-paid row.
+  - `PATCH /api/expenses/[id]` — owner-only, single purpose: flip
+    `reimbursement_status` between 'pending' and 'paid'. 400 if the row is
+    company-paid (nobody to pay back).
+  - `DELETE /api/expenses/[id]` — **the delete rules:** employees may delete
+    only their own employee-paid rows and only while `pending` (403 for
+    someone else's, 409 once paid). The owner may delete anything **except
+    shift-linked rows** (`shift_entry_id` not null) — those belong to the
+    entry form / owner entry-edit flow, and deleting one here would silently
+    change a shift's net behind the entries screen's back. Rejected with a
+    message pointing at the shift entry instead.
+  - `/api/reimbursements/upload` moved to `/api/expenses/upload`, behavior
+    unchanged.
+
+- **Status is two-state now**: 'pending' or 'paid'. The old 'approved'
+  middle state was folded into 'pending' by the migration — a thing is
+  reimbursed or it isn't.
+
+- **Consumers repointed** (minimal patches; screens behave as before):
+  - `replace_entry_expenses` RPC repointed at `expenses` by the migration.
+    Signature unchanged, so `POST /api/entries` and `PUT /api/entries/[id]`
+    still call it as-is. It now stamps shift expenses as company-paid,
+    category 'Operational', dated to the shift's own `entry_date`, with the
+    shift's venue and employee.
+  - `GET /api/entries`: the nested `entry_expenses(...)` embed no longer
+    resolves; it now selects `entry_expenses:expenses(description, amount)`
+    — the shift-linked join, aliased back to the old key so
+    `EntriesClient` is untouched.
+  - `/api/dashboard`: the two old expense queries collapsed into **one**
+    query on `expenses`. Response keeps `operationalExpenses` (the
+    shift-linked slice) and `reimbursements` (the employee-paid slice) so
+    the current UI doesn't break, and **adds `totalExpenses` (all rows) and
+    `owedToEmployees` (employee-paid AND pending)**. `netProfit` is now
+    `revenue − totalExpenses`. Note `operationalExpenses` and
+    `reimbursements` are overlapping *slices* of `totalExpenses`, not
+    addends — never sum them.
+  - `ReimburseClient`: repointed at `/api/expenses` only. It deliberately
+    pins itself to the employee-paid slice (`paidBy=employee` on GET,
+    `paid_by='employee'` on POST) so the screen behaves exactly as it did
+    — including for the owner, who logs their own out-of-pocket costs here.
+    Phase E redesigns it.
+
+- **`reimbursements_legacy` and `entry_expenses_legacy` still exist in the
+  database, read-only.** Nothing in the app reads or writes them and they
+  are deliberately absent from `lib/supabase/types.ts`. They're kept so the
+  migration stays reversible; a future cleanup phase drops them. Don't wire
+  anything to them in the meantime.
+
+- **FK/embed hazard (same rule as Phase C):** `expenses` has **three**
+  foreign keys to `users` (`payer_user_id`, `related_user_id`, `logged_by`).
+  Every PostgREST embed of `users` from this table must pin its constraint
+  name (e.g. `users!expenses_payer_user_id_fkey(name)`) or it fails with
+  `PGRST201`. Done in `/api/expenses`.
+
+### Phase D verification (production build, `npm run start`, against the live DB)
+1. **Migration gate (before renames)**: 5/5 rows @ 74,500 and 7/7 rows @
+   4,000 — both checks equal on counts and sums.
+2. **Shift entry round-trip**: employee submitted an entry with two
+   expenses → both landed in `expenses` with `shift_entry_id` set, category
+   'Operational', company-paid, dated to the shift, venue inherited. Owner
+   `PUT` then replaced two expense rows with one (replace, not append).
+3. **Real data unchanged**: all four July entries that carry expenses were
+   read back through `GET /api/entries` and matched
+   `entry_expenses_legacy` exactly — same descriptions, amounts, grouping
+   and nets (e.g. 2026-07-17: four expenses totalling 3,150; 2026-07-25:
+   3,800 received − 200 = 3,600 net).
+4. **Employee expense flow**: employee POST created an employee-paid
+   pending row; owner PATCH flipped it to paid and back; employee PATCH →
+   403; employee GET with `paidBy=company&userId=all` still returned only
+   their own employee-paid row (no leakage).
+5. **Owner company expense**: Salary / PKR 40,000 with `related_user_id` =
+   Ahsan stored correctly (company-paid, null payer + status, logged_by
+   Owner). Employee-paid POST without a payer → friendly 400. PATCH on a
+   company row → friendly 400. Employee posting a Salary category → 400.
+6. **Delete rules**: owner deleting a shift-linked row → 409 with the
+   "edit that shift entry" message; employee deleting their own paid row →
+   409; employee deleting another employee's row → 403; employee deleting
+   their own pending row → 200.
+7. **Dashboard hand-check (July, real data)**: API returned revenue
+   112,350, totalExpenses 78,500, netProfit 33,850, owedToEmployees 74,500
+   — identical to the same figures computed directly in SQL.
+8. `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+
+**Test data:** all writes used a far-future date (2026-12-30) that can't
+collide with real shift data, and every test row was described "PHASE D
+TEST". All were deleted afterward — the database is back to exactly the
+post-migration baseline (12 expense rows / PKR 78,500; 61 shift entries;
+December empty).
+
 ### In progress
-- Nothing. Core app, PWA support, and Phase A are live and in daily use
-  at https://lunaro-ops-app.vercel.app. Phases B and C are complete on the
-  `develop` branch, not yet merged to `master`/deployed.
+- Nothing. Phases B, C and D are complete on the `develop` branch, not yet
+  merged to `master`/deployed.
 
 ### Known issues
-- None currently tracked.
+- **The live deployment on `master` is broken until Phase D ships.** The
+  migration renamed `entry_expenses` and `reimbursements` in the production
+  database, and the currently-deployed `master` build still queries those
+  names. `/reimburse`, `/dashboard` and `/entries` will error in production
+  until `develop` is merged and deployed. Nothing was lost — this is purely
+  a code-vs-schema mismatch that ends the moment Phase D deploys.
+- `app/dashboard/DashboardClient.tsx` still labels the net profit card
+  "Revenue − operational expenses − reimbursements". That reads correctly
+  today (no company-paid non-shift expenses exist yet) but becomes wrong as
+  soon as the owner logs one, since net is now `revenue − totalExpenses`.
+  Left untouched deliberately — Phase D was API-only and Phase E reworks
+  this UI onto `totalExpenses` / `owedToEmployees`.
 
 ### Next phase
-- Phases A, B and C are done; Phases D–F of the architecture-review round
-  are not yet defined/started. Do not begin them without an explicit phase
-  prompt.
+- Phase E — the screens for the new model (owner expense logging, the
+  reimburse screen redesign, dashboard rework onto `totalExpenses` /
+  `owedToEmployees`). Do not begin it without an explicit phase prompt.
 
 ---
 

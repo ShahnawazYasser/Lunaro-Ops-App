@@ -23,6 +23,9 @@ export async function GET(request: NextRequest) {
 
   const { startDate, endDate } = monthRange(month);
 
+  // Shift-linked expenses now live in the unified `expenses` table (Phase D),
+  // joined on shift_entry_id. Aliased back to `entry_expenses` so the
+  // response shape EntriesClient reads is unchanged.
   const { data, error } = await supabaseAdmin
     .from("shift_entries")
     .select(`
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest) {
       created_at,
       users!shift_entries_user_id_fkey!inner(name),
       venues!inner(name),
-      entry_expenses(description, amount)
+      entry_expenses:expenses(description, amount)
     `)
     .gte("entry_date", startDate)
     .lte("entry_date", endDate)

@@ -3,8 +3,19 @@
 // Structure matches what Supabase CLI would generate — required for type inference.
 
 export type UserRole = "employee" | "owner";
-export type ReimbursementCategory = "Petrol" | "Food" | "Misc";
-export type ReimbursementStatus = "pending" | "approved" | "paid";
+
+// Money-out model (Phase D): one `expenses` table.
+//   paid_by = 'company'  → a normal business expense, no reimbursement status
+//   paid_by = 'employee' → the employee fronted the money and is owed it back
+//                          until reimbursement_status = 'paid'
+// Either way the row always counts as an expense in P&L.
+export type PaidBy = "company" | "employee";
+export type ReimbursementStatus = "pending" | "paid";
+
+// The legacy `reimbursements_legacy` and `entry_expenses_legacy` tables still
+// exist in the database as read-only historical copies pending a cleanup
+// phase. They are deliberately NOT typed here — nothing in the app may query
+// them.
 
 export interface Database {
   public: {
@@ -147,87 +158,92 @@ export interface Database {
           },
         ];
       };
-      entry_expenses: {
+      expenses: {
         Row: {
           id: string;
-          shift_entry_id: string;
-          description: string;
-          amount: number;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          shift_entry_id: string;
-          description: string;
-          amount: number;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          shift_entry_id?: string;
-          description?: string;
-          amount?: number;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "entry_expenses_shift_entry_id_fkey";
-            columns: ["shift_entry_id"];
-            isOneToOne: false;
-            referencedRelation: "shift_entries";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      reimbursements: {
-        Row: {
-          id: string;
-          user_id: string;
-          category: ReimbursementCategory;
+          expense_date: string;
+          category: string;
           amount: number;
           description: string | null;
           receipt_url: string | null;
-          status: ReimbursementStatus;
-          expense_date: string;
+          paid_by: PaidBy;
+          payer_user_id: string | null;
+          reimbursement_status: ReimbursementStatus | null;
+          related_user_id: string | null;
+          shift_entry_id: string | null;
           venue_id: string | null;
+          logged_by: string;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          user_id: string;
-          category: ReimbursementCategory;
+          expense_date: string;
+          category: string;
           amount: number;
           description?: string | null;
           receipt_url?: string | null;
-          status?: ReimbursementStatus;
-          expense_date?: string;
+          paid_by: PaidBy;
+          payer_user_id?: string | null;
+          reimbursement_status?: ReimbursementStatus | null;
+          related_user_id?: string | null;
+          shift_entry_id?: string | null;
           venue_id?: string | null;
+          logged_by: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
-          user_id?: string;
-          category?: ReimbursementCategory;
+          expense_date?: string;
+          category?: string;
           amount?: number;
           description?: string | null;
           receipt_url?: string | null;
-          status?: ReimbursementStatus;
-          expense_date?: string;
+          paid_by?: PaidBy;
+          payer_user_id?: string | null;
+          reimbursement_status?: ReimbursementStatus | null;
+          related_user_id?: string | null;
+          shift_entry_id?: string | null;
           venue_id?: string | null;
+          logged_by?: string;
           updated_at?: string;
         };
+        // NOTE: three separate FKs to `users`. Any PostgREST embed of users
+        // from this table MUST pin the constraint name (e.g.
+        // `users!expenses_payer_user_id_fkey(name)`) or it fails with
+        // PGRST201 "more than one relationship was found".
         Relationships: [
           {
-            foreignKeyName: "reimbursements_user_id_fkey";
-            columns: ["user_id"];
+            foreignKeyName: "expenses_payer_user_id_fkey";
+            columns: ["payer_user_id"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "reimbursements_venue_id_fkey";
+            foreignKeyName: "expenses_related_user_id_fkey";
+            columns: ["related_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "expenses_logged_by_fkey";
+            columns: ["logged_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "expenses_shift_entry_id_fkey";
+            columns: ["shift_entry_id"];
+            isOneToOne: false;
+            referencedRelation: "shift_entries";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "expenses_venue_id_fkey";
             columns: ["venue_id"];
             isOneToOne: false;
             referencedRelation: "venues";
