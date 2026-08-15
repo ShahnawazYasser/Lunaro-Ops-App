@@ -71,6 +71,8 @@ export interface Database {
           notes: string | null;
           cash_collected: boolean;
           cash_collected_at: string | null;
+          last_edited_by: string | null;
+          last_edited_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -93,6 +95,8 @@ export interface Database {
           notes?: string | null;
           cash_collected?: boolean;
           cash_collected_at?: string | null;
+          last_edited_by?: string | null;
+          last_edited_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -115,12 +119,21 @@ export interface Database {
           notes?: string | null;
           cash_collected?: boolean;
           cash_collected_at?: string | null;
+          last_edited_by?: string | null;
+          last_edited_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
           {
             foreignKeyName: "shift_entries_user_id_fkey";
             columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_entries_last_edited_by_fkey";
+            columns: ["last_edited_by"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];

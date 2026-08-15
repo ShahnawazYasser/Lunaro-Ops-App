@@ -60,6 +60,14 @@ create table public.shift_entries (
   cash_collected      boolean not null default false,
   cash_collected_at   timestamptz,
 
+  -- Owner edit audit trail (Phase C). Null = never owner-edited.
+  -- updated_at is not enough: it moves on any update, including the
+  -- cash_collected toggle. These two mean specifically "the owner changed
+  -- the data". Once last_edited_by is set, employee resubmission for this
+  -- user+date is rejected, same as cash_collected.
+  last_edited_by      uuid references public.users (id),
+  last_edited_at      timestamptz,
+
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
 

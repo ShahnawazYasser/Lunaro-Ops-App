@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** Live — 2026-07-01. Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-08-15 (Phase C). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -666,19 +666,119 @@ All 4 outstanding checks passed, no fixes needed:
   cleaned up afterward — no real shift data altered.
 - `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
 
+**Phase C — Owner Entry Editing + Audit Trail**
+- Migration (via Supabase MCP, added to `supabase_schema.sql`): `shift_entries`
+  gains `last_edited_by uuid references public.users(id)` and
+  `last_edited_at timestamptz`. Null = never owner-edited. `updated_at` is
+  deliberately not used for this — it moves on any update including the
+  collect toggle; these two mean specifically "the owner changed the data."
+
+- **`components/ShiftEntryForm.tsx` (new) is now the single source of the
+  shift entry form.** Any future work on entry fields, validation, the live
+  PKR math, or the expense rows goes here — not into a page component.
+  `app/entry/EntryClient.tsx` shrank from ~740 lines to a ~135-line wrapper
+  that supplies employee behavior (POST, toasts, the 409 locked banner);
+  `app/entries/EntriesClient.tsx` is the second consumer (owner edit).
+  Props: `venues`, `initialValues`, `submitLabel`, `submittingLabel`,
+  `submitting` (parent-owned in-flight state), `disabled` (full read-only —
+  every input disabled, submit hidden), `dateReadOnly` (owner edit; the date
+  is part of the entry's identity), `onSubmit(payload)`, `onError(message)`,
+  `onDateChange`. The form owns its own field state — parents reset it by
+  changing its React `key`, not by pushing values down.
+  Exports `blankShiftEntryValues()`, `localToday()`, and the
+  `ShiftEntryFormValues` / `ShiftEntryPayload` / `Venue` types.
+
+- **New owner-only route `PUT /api/entries/[id]`** — same body shape as
+  POST. 403 for non-owners, 404 for an unknown id. Sets
+  `last_edited_by = session.userId` and `last_edited_at = now()`, replaces
+  expenses via the Phase A `replace_entry_expenses` RPC. **Deliberately
+  bypasses the employee lock: the owner can edit a `cash_collected` entry,
+  because the owner is the finalizer.** Rejects with 400 any attempt to
+  change `entry_date` (or `user_id`, if sent) — an entry on the wrong date
+  is a delete-and-recreate, not an edit. This is the explicit owner-edit
+  bypass Phase B said a future path would need.
+
+- **Permanent behavior contract — the lock rule is now broader.**
+  `POST /api/entries` (employee submission) rejects resubmission for a
+  user+date with `409` and "This entry has been finalized by the owner.
+  Contact them to make changes." when the existing row has
+  **`cash_collected = true` OR `last_edited_by is not null`**. Once the
+  owner has touched an entry — by collecting the cash or by editing it —
+  employee overwrites are blocked permanently. Do not weaken or bypass this
+  without an explicit decision; owner changes go through PUT, which is the
+  sanctioned bypass.
+
+- `app/entries/EntriesClient.tsx`: the expanded detail view gains an "Edit"
+  button opening a full-screen sheet (fixed inset-0, own sticky header with
+  Cancel) containing the shared form prefilled from the row, with the date
+  locked. On save: PUT, success toast, list refetch, sheet closes. Collapsed
+  cards show a gold-outline "Edited" badge when `last_edited_by` is set
+  (alongside the existing filled "Collected" badge), and the expanded view
+  shows "Edited by the owner on <date>" from `last_edited_at`.
+  `app/entries/page.tsx` now loads venues server-side to feed the form.
+
+- `GET /api/entries` returns `last_edited_by` / `last_edited_at`.
+
+### Bug caught during Phase C (would have broken /entries in production)
+Adding `last_edited_by` gave `shift_entries` a **second** foreign key to
+`users`, which made PostgREST's existing `users!inner(name)` embed in
+`GET /api/entries` ambiguous — it returns `PGRST201` ("more than one
+relationship was found"), not a row set. The migration alone would have
+taken the whole `/entries` screen down. Fixed by pinning the embed to the
+constraint: `users!shift_entries_user_id_fkey!inner(name)`. Confirmed the
+ambiguity was real by hitting PostgREST directly with the old selector
+after the migration.
+**Rule for future work: any new FK from a table to `users` (or to any table
+already embedded elsewhere) requires auditing every `select()` that embeds
+that table and pinning the FK name.** `app/api/reimbursements/route.ts`
+also embeds `users!inner(name)` but `reimbursements` still has only one FK
+to `users`, so it was left as-is — it will need the same treatment if a
+second one is ever added.
+
+### Phase C verification (all run against a production build, `npm run start`)
+1. **Employee flow unchanged after the extraction** — verified structurally,
+   not just by eye: built the pre-refactor commit, captured the rendered
+   `/entry` HTML as Ahsan, then rebuilt with the refactor and diffed the two
+   (normalizing build ids and chunk hashes). The DOM is identical except
+   (a) `space-y-5` moved from `<main>` onto an inner wrapper holding exactly
+   the same children — same spacing, and (b) one added
+   `.input-base:disabled { opacity: 0.6 }` rule, which can only apply in the
+   read-only mode the employee flow never uses. Ahsan also submitted a real
+   entry (insert 201) and resubmitted it (update 200) — both unchanged.
+2. **Owner edit** — PUT changed total prints 10→14, cash 5000→7000 and the
+   expense 300→750; DB confirmed the new values, `last_edited_by` = Owner,
+   `last_edited_at` set, and exactly one expense row (RPC replaced rather
+   than appended). `last_edited_by` comes back non-null on GET, which is
+   what drives the badge.
+3. **Employee lock** — Ahsan resubmitting that date got `409` with the exact
+   message. (The same date accepted a resubmit *before* the owner edit, so
+   the lock is caused by the edit, not by something else.)
+4. **Identity guard** — PUT with a changed `entryDate` → `400`. Also checked:
+   PUT as an employee → `403`; PUT on an unknown id → `404`.
+5. **Dashboard recalc** — `/api/dashboard?month=2026-12` went 0 → revenue
+   7500 / opex 750 / net 6750 after the edit, matching the edited figures.
+6. **Owner bypass** — marked the entry collected, then PUT again: still
+   `200`, and `cash_collected` survived the edit.
+7. `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+
+**Test data:** all writes used a far-future date (Ahsan, 2026-12-31) that
+can't collide with real shift data, agreed with Shahnawaz beforehand. The
+row was deleted afterward; `/api/dashboard?month=2026-12` confirmed back to
+0/0/0 and August's 16 real entries were verified untouched (none flagged
+edited).
+
 ### In progress
 - Nothing. Core app, PWA support, and Phase A are live and in daily use
-  at https://lunaro-ops-app.vercel.app. Phase B (this entry) is complete
-  on the `develop` branch, not yet merged to `master`/deployed.
+  at https://lunaro-ops-app.vercel.app. Phases B and C are complete on the
+  `develop` branch, not yet merged to `master`/deployed.
 
 ### Known issues
 - None currently tracked.
 
 ### Next phase
-- Phases A and B are done; Phases C–F of the architecture-review round are
-  not yet defined/started. Do not begin them without an explicit phase
-  prompt. (Phase B's task notes a future owner-edit path as Phase C's
-  likely territory — not started here.)
+- Phases A, B and C are done; Phases D–F of the architecture-review round
+  are not yet defined/started. Do not begin them without an explicit phase
+  prompt.
 
 ---
 

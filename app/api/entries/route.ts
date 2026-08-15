@@ -30,8 +30,9 @@ export async function GET(request: NextRequest) {
       total_prints, extra_prints, system_prints_500, system_prints_250,
       free_prints, waste_prints, cash_received, bank_received,
       clock_in, clock_out, notes, cash_collected, cash_collected_at,
+      last_edited_by, last_edited_at,
       created_at,
-      users!inner(name),
+      users!shift_entries_user_id_fkey!inner(name),
       venues!inner(name),
       entry_expenses(description, amount)
     `)
@@ -102,15 +103,21 @@ export async function POST(request: NextRequest) {
 
   const userId = session.userId;
 
-  // Check for existing entry for this user+date
+  // Check for existing entry for this user+date.
+  //
+  // The lock: once the owner has touched a row — either by marking the cash
+  // collected, or by editing it via PUT /api/entries/[id] — employee
+  // resubmission for that user+date is permanently rejected. Without it, an
+  // upsert on (user_id, entry_date) would silently overwrite the owner's
+  // reconciled figures. Owner edits go through PUT, which bypasses this.
   const { data: existing } = await supabaseAdmin
     .from("shift_entries")
-    .select("id, cash_collected")
+    .select("id, cash_collected, last_edited_by")
     .eq("user_id", userId)
     .eq("entry_date", entryDate)
     .maybeSingle();
 
-  if (existing?.cash_collected) {
+  if (existing?.cash_collected || existing?.last_edited_by) {
     return NextResponse.json(
       {
         error:
