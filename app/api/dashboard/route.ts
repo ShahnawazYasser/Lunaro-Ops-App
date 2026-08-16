@@ -37,6 +37,12 @@ export interface DashboardResponse {
   freePrintsCount: number;
   freePrintsCost: number;
   wastePrints: number;
+  // Cash-basis booking revenue for the month (Phase F) — sum of advance/final
+  // payments whose *payment date* falls in this month. amount_charged and
+  // event_date play no role here. bookingPaymentsCount is just the number of
+  // qualifying payments, for the "Client events" line's subtitle.
+  bookingRevenue: number;
+  bookingPaymentsCount: number;
   revenueByVenue: VenueRevenue[];
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
@@ -137,6 +143,35 @@ export async function GET(request: NextRequest) {
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
+  // Booking (paid client event) revenue — CASH BASIS (Phase F). A payment
+  // counts in the month its own date falls in; amount_charged and event_date
+  // play no role. A cancelled booking's already-received advance still
+  // counts — money doesn't get un-received by a status change.
+  const { data: bookingRows, error: bookingErr } = await supabaseAdmin
+    .from("bookings")
+    .select("advance_amount, advance_date, final_amount, final_date")
+    .or(
+      `and(advance_date.gte.${startDate},advance_date.lte.${endDate}),` +
+        `and(final_date.gte.${startDate},final_date.lte.${endDate})`
+    );
+
+  if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
+
+  let bookingRevenue = 0;
+  let bookingPaymentsCount = 0;
+  for (const b of bookingRows ?? []) {
+    if (b.advance_date && b.advance_date >= startDate && b.advance_date <= endDate && b.advance_amount) {
+      bookingRevenue += b.advance_amount;
+      bookingPaymentsCount += 1;
+    }
+    if (b.final_date && b.final_date >= startDate && b.final_date <= endDate && b.final_amount) {
+      bookingRevenue += b.final_amount;
+      bookingPaymentsCount += 1;
+    }
+  }
+
+  totalRevenue += bookingRevenue;
+
   // Attendance summary — same derivation logic as /api/attendance:
   // present = a shift_entries row exists for that user+date, unless an
   // attendance_overrides row exists for that date, which always wins.
@@ -189,6 +224,8 @@ export async function GET(request: NextRequest) {
     freePrintsCount,
     freePrintsCost: freePrintsCount * FREE_PRINT_COST,
     wastePrints,
+    bookingRevenue,
+    bookingPaymentsCount,
     revenueByVenue,
     expensesByCategory,
     attendance,

@@ -142,6 +142,53 @@ create table public.login_attempts (
 );
 create index login_attempts_name_time on public.login_attempts (name, attempted_at);
 
+-- ─── Bookings (paid client events, Phase F) ──────────────────────────────────
+-- Simplified scope: no Google Calendar sync — a later phase adds columns for
+-- that; nothing here changes because of it.
+create table public.bookings (
+  id             uuid primary key default gen_random_uuid(),
+
+  client_name    text not null,           -- who booked
+  event_name     text,                    -- optional ("Mehndi", "Corporate launch")
+  package        text,                    -- optional freeform ("2-hour booth + props")
+  amount_charged numeric(10,2) not null check (amount_charged > 0),  -- the agreed deal
+  event_date     date not null,
+  notes          text,
+
+  -- Payments actually received (cash basis — typically 50% before,
+  -- 50% after, but amounts are free). A payment is an amount+date
+  -- pair: both set or both null.
+  advance_amount numeric(10,2) check (advance_amount > 0),
+  advance_date   date,
+  final_amount   numeric(10,2) check (final_amount > 0),
+  final_date     date,
+
+  status         text not null default 'upcoming'
+                 check (status in ('upcoming','completed','cancelled')),
+
+  created_by     uuid not null references public.users (id),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+
+  constraint bookings_advance_pair check ((advance_amount is null) = (advance_date is null)),
+  constraint bookings_final_pair   check ((final_amount is null) = (final_date is null))
+);
+
+create index bookings_event_date_idx   on public.bookings (event_date);
+create index bookings_advance_date_idx on public.bookings (advance_date) where advance_date is not null;
+create index bookings_final_date_idx   on public.bookings (final_date) where final_date is not null;
+
+-- Revenue rules (design contract, not SQL — see migration_bookings.sql and
+-- the Phase F notes in CLAUDE.md for the full explanation):
+--   1. CASH BASIS: booking revenue for a month = sum(advance_amount where
+--      advance_date in month) + sum(final_amount where final_date in
+--      month). amount_charged is the deal, NOT revenue. event_date and
+--      status play NO role in revenue — a kept advance on a cancelled
+--      booking still counts; money not received never counts.
+--   2. API-level validation (not DB): advance + final <= amount_charged.
+--   3. Double-count guard: client payments for booked events go on the
+--      booking row only — never logged as cash/bank on a shift entry too.
+
 -- ─── Updated-at triggers ─────────────────────────────────────────────────────
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
@@ -157,6 +204,10 @@ create trigger shift_entries_updated_at
 
 create trigger expenses_updated_at
   before update on public.expenses
+  for each row execute function public.set_updated_at();
+
+create trigger bookings_updated_at
+  before update on public.bookings
   for each row execute function public.set_updated_at();
 
 -- ─── Atomic expense replace ──────────────────────────────────────────────────
@@ -198,6 +249,7 @@ alter table public.shift_entries       enable row level security;
 alter table public.expenses            enable row level security;
 alter table public.attendance_overrides enable row level security;
 alter table public.login_attempts       enable row level security;
+alter table public.bookings             enable row level security;
 
 -- venues: publicly readable (no auth needed for the dropdown list)
 create policy "venues_public_read"
