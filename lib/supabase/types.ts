@@ -17,6 +17,10 @@ export type ReimbursementStatus = "pending" | "paid";
 // phase. They are deliberately NOT typed here — nothing in the app may query
 // them.
 
+// Bookings (Phase F) — paid client events. Cash-basis revenue: see
+// migration_bookings.sql / supabase_schema.sql / CLAUDE.md for the full rule.
+export type BookingStatus = "upcoming" | "completed" | "cancelled";
+
 export interface Database {
   public: {
     Tables: {
@@ -247,6 +251,67 @@ export interface Database {
             columns: ["venue_id"];
             isOneToOne: false;
             referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      bookings: {
+        Row: {
+          id: string;
+          client_name: string;
+          event_name: string | null;
+          package: string | null;
+          amount_charged: number;
+          event_date: string;
+          notes: string | null;
+          advance_amount: number | null;
+          advance_date: string | null;
+          final_amount: number | null;
+          final_date: string | null;
+          status: BookingStatus;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_name: string;
+          event_name?: string | null;
+          package?: string | null;
+          amount_charged: number;
+          event_date: string;
+          notes?: string | null;
+          advance_amount?: number | null;
+          advance_date?: string | null;
+          final_amount?: number | null;
+          final_date?: string | null;
+          status?: BookingStatus;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_name?: string;
+          event_name?: string | null;
+          package?: string | null;
+          amount_charged?: number;
+          event_date?: string;
+          notes?: string | null;
+          advance_amount?: number | null;
+          advance_date?: string | null;
+          final_amount?: number | null;
+          final_date?: string | null;
+          status?: BookingStatus;
+          created_by?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "bookings_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];

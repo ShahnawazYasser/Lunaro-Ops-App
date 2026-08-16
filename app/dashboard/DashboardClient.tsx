@@ -33,6 +33,8 @@ interface DashboardResponse {
   freePrintsCount: number;
   freePrintsCost: number;
   wastePrints: number;
+  bookingRevenue: number;
+  bookingPaymentsCount: number;
   revenueByVenue: VenueRevenue[];
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
@@ -98,7 +100,7 @@ export default function DashboardClient() {
 
   useEffect(() => { void fetchDashboard(month); }, [month, fetchDashboard]);
 
-  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
+  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.bookingRevenue > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
@@ -189,24 +191,38 @@ export default function DashboardClient() {
               Revenue by Venue
             </p>
             <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-              {data.revenueByVenue.length === 0 ? (
+              {data.revenueByVenue.length === 0 && data.bookingRevenue === 0 ? (
                 <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
                   No shifts logged this month
                 </div>
               ) : (
-                data.revenueByVenue.map((v, i) => (
-                  <div key={v.venueId}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                    <div>
-                      <p className="text-sm font-medium">{v.venueName}</p>
-                      <p className="text-xs" style={{ color: "#8A9BAD" }}>
-                        {v.shiftCount} {v.shiftCount === 1 ? "shift" : "shifts"}
-                      </p>
+                <>
+                  {data.revenueByVenue.map((v, i) => (
+                    <div key={v.venueId}
+                      className="flex items-center justify-between px-3 py-2.5"
+                      style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
+                      <div>
+                        <p className="text-sm font-medium">{v.venueName}</p>
+                        <p className="text-xs" style={{ color: "#8A9BAD" }}>
+                          {v.shiftCount} {v.shiftCount === 1 ? "shift" : "shifts"}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(v.revenue)}</span>
                     </div>
-                    <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(v.revenue)}</span>
-                  </div>
-                ))
+                  ))}
+                  {data.bookingRevenue > 0 && (
+                    <div className="flex items-center justify-between px-3 py-2.5"
+                      style={{ borderTop: data.revenueByVenue.length === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
+                      <div>
+                        <p className="text-sm font-medium">Client events</p>
+                        <p className="text-xs" style={{ color: "#8A9BAD" }}>
+                          {data.bookingPaymentsCount} {data.bookingPaymentsCount === 1 ? "payment" : "payments"} received
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(data.bookingRevenue)}</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>

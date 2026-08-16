@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-08-17 (Phase E). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-08-17 (Phase F). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1014,25 +1014,164 @@ directly via the Supabase MCP server, confirmed cascade-removed its linked
 expense row too). `/api/dashboard?month=2026-12` confirmed back to
 0/0/0 afterward.
 
+**Phase F — Paid Client-Event Bookings**
+
+- **New `bookings` table** (`migration_bookings.sql`, applied via the
+  Supabase MCP server; `supabase_schema.sql` and `lib/supabase/types.ts`
+  synced). One row per paid client event: `client_name`, optional
+  `event_name`/`package`/`notes`, `amount_charged` (the agreed deal),
+  `event_date`, an advance pair (`advance_amount`+`advance_date`) and a
+  final pair (`final_amount`+`final_date`) — each pair is complete or
+  entirely null (DB check constraints), `status`
+  (`upcoming`/`completed`/`cancelled`, default `upcoming`), `created_by`.
+  Google Calendar sync is explicitly deferred to a later phase; nothing
+  here assumes or blocks it — a future migration would only *add* columns.
+
+- **The cash-basis booking revenue rule (permanent, same principle as
+  shift entries):** a booking's revenue is driven entirely by *payment
+  dates*, never by `amount_charged` or `event_date`. For a given month:
+  `revenue = sum(advance_amount where advance_date in month) +
+  sum(final_amount where final_date in month)`. Marking a booking
+  `cancelled` does **not** remove revenue already received — money doesn't
+  get un-received by a status change; only editing the payment itself
+  (clearing the amount/date) does that. This mirrors the Phase D expense
+  accrual rule and must not be "fixed" to use `event_date` or
+  `amount_charged` instead — that was tested explicitly (see verification
+  below) and deviating from it would silently misstate revenue for any
+  booking whose event and payment dates land in different months, which is
+  the normal case (deposit today, event next month).
+
+- **The staff double-count rule (operational, enforced by policy not
+  code):** client payments for a booked event go on the booking row only.
+  The employee working that event must **not** also log the same money as
+  `cash_received`/`bank_received` on their shift entry — doing so would
+  count it as revenue twice (once via the booking's payment date, once via
+  the shift's `entry_date`). There is no technical guard against this
+  (the two tables are independent); it's the owner's job to communicate it
+  to staff. Documented here per the phase prompt, not enforced in code.
+
+- **New owner-only `/api/bookings`** (list + create) and
+  `/api/bookings/[id]` (edit + delete), 403 for employees on every method.
+  `GET ?filter=upcoming|past|all` — upcoming = `event_date >= today AND
+  status != 'cancelled'`, soonest first; past = everything else
+  (past-dated OR cancelled, regardless of date), most recent first. Every
+  row includes a server-computed `balance_due = amount_charged −
+  (advance_amount ?? 0) − (final_amount ?? 0)`. `POST` validates
+  `client_name`/`amount_charged`/`event_date` required, the advance pair
+  complete-or-absent, and `advance ≤ amount_charged`; a fresh booking is
+  always `status: 'upcoming'` and has no final payment yet — that's an
+  edit-only field. `PUT` accepts the full field set including `status` and
+  both payment pairs, with the same pair-completeness rule applied to both,
+  and `advance + final ≤ amount_charged` (friendly message: "Payments
+  can't exceed the amount charged"). `DELETE` is a hard delete — bookings
+  don't have a soft-delete/cash-collected-style lock like shift entries.
+
+- **`components/BookingForm.tsx`** (new) is the single shared form for
+  both create and edit, following the same pattern as
+  `components/ShiftEntryForm.tsx` (Phase C): owns its own field state,
+  parent resets it via React `key`. `showFinalPayment` (edit-only) reveals
+  the Final Payment section and the status picker — a fresh booking can't
+  have a final payment or a non-default status yet. Typing an amount into
+  either payment section with no date yet auto-fills today (the common
+  case), while the date stays editable. Live summary shows amount charged,
+  received so far, and balance due (gold when > 0, "Fully paid" in green
+  when 0).
+
+- **`/bookings`** (new, owner-only): create form at top, Upcoming/Past
+  toggle list below. Cards show the event date, client/event name,
+  package, the money line ("PKR {charged} · received PKR {x} · due PKR
+  {y}" or "· Fully paid"), a status chip, and are visually muted
+  (`opacity: 0.6`) when cancelled. Edit opens the shared form in a
+  full-screen sheet (same pattern as `/entries`'s owner edit). A "Cancel"
+  quick-action (status → `cancelled` via `PUT`, no confirm — it's
+  reversible through Edit) sits next to Edit/Delete on non-cancelled
+  cards; Delete always requires a confirm dialog.
+
+- **Nav**: owner tabs are now Dashboard · Attendance · Entries · Expenses ·
+  Bookings — 5 tabs total, up from 4. Re-verified no crowding at Chrome's
+  minimum window width (~500px, the narrowest this environment's browser
+  tool can reach — see the Phase E note on the same limitation); all 5
+  labels stayed legible with no wrapping or truncation, so no label
+  shortening was needed.
+
+- **Dashboard integration**: `GET /api/dashboard` now also queries
+  `bookings` for the month (same cash-basis rule as above) and adds
+  `bookingRevenue`/`bookingPaymentsCount` to the response.
+  `totalRevenue = shift-entry revenue + bookingRevenue`, computed in one
+  place, so `netProfit` (`revenue − totalExpenses`) picked it up with no
+  separate change needed — verified, not assumed. The Revenue by Venue
+  block gains a "Client events" row (same visual pattern as a venue row,
+  subtitle "{n} payment(s) received" instead of "{n} shift(s)"), shown
+  only when `bookingRevenue > 0` for that month, consistent with how real
+  venue rows only appear when they have shift data. Shift-entry revenue
+  computation itself was not touched.
+
+### Phase F verification (production build, `npm run start`, against the live DB)
+1. Created a booking (PKR 40,000 charged, event dated next test-month,
+   advance PKR 20,000 dated in the test month) — dashboard revenue for
+   that month rose by exactly 20,000, not 40,000; "Client events" showed
+   20,000 / 1 payment.
+2. Edited to add a final payment of PKR 20,000 in the same month — revenue
+   rose to +40,000; the booking's `balance_due` was 0 and the card showed
+   "Fully paid".
+3. Edited the advance's date to the previous month — the original month's
+   revenue dropped back to +20,000 (final payment only) and the previous
+   month's revenue independently rose by +20,000 — confirmed both months
+   via the API, not just the one being edited.
+4. Set the booking to `cancelled` — both months' booking revenue was
+   unchanged (the already-received payments still count; cash basis, not
+   status-gated). The cancelled booking correctly appeared under
+   `filter=past` (its event date was still in the future — cancellation
+   alone moved it out of "upcoming").
+5. Confirmed friendly 400 "Payments can't exceed the amount charged" on
+   both a `POST` and a `PUT` where advance + final exceeded
+   `amount_charged`.
+6. Employee (Farhan) session: `GET/POST /api/bookings` and
+   `PUT/DELETE /api/bookings/[id]` all returned 403; `GET /bookings`
+   redirected (307 → `/entry`).
+7. Additive revenue check: added a real test shift entry (PKR 5,000 cash)
+   in the same test month as step 1's booking — dashboard `totalRevenue`
+   was exactly 5,000 (shift) + 20,000 (booking) = 25,000, `revenueByVenue`
+   showed the shift's 5,000 separately from booking revenue, `netProfit`
+   matched with zero expenses that month.
+8. Full click-through of the owner role, live in-browser: nav (5 tabs, no
+   crowding), the create form, the Upcoming/Past toggle, a cancelled card's
+   muted styling and status chip, and the delete confirm dialog + toast —
+   all behaved as designed.
+9. `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+
+**Test data:** all writes used isolated test months (November/December
+2026, event dates into January 2027) that don't overlap real bookings or
+shift data, every booking described "PHASE F TEST". Everything was removed
+afterward — the booking via the live UI's delete flow, the test shift
+entry via the Supabase MCP server (no delete API for shift entries, same
+as prior phases). `bookings` confirmed empty and both test months'
+`/api/dashboard` confirmed back to 0/0/0.
+
+**This closes improvement round A–F.**
+
 ### In progress
-- Nothing. Phases A–E are complete on the `develop` branch, not yet merged
+- Nothing. Phases A–F are complete on the `develop` branch, not yet merged
   to `master`/deployed.
 
 ### Known issues
 - **The live deployment on `master` is broken until this work ships.** The
   Phase D migration renamed `entry_expenses` and `reimbursements` in the
   production database, and the currently-deployed `master` build still
-  queries those names. `/reimburse`, `/dashboard`, `/entries`, and the new
-  `/expenses` will error in production until `develop` is merged and
-  deployed. Nothing was lost — this is purely a code-vs-schema mismatch
-  that ends the moment this work deploys.
+  queries those names. `/reimburse`, `/dashboard`, `/entries`, `/expenses`,
+  and the new `/bookings` will error in production until `develop` is
+  merged and deployed. Nothing was lost — this is purely a code-vs-schema
+  mismatch that ends the moment this work deploys.
 
 ### Next phase
-- None queued. Wait for an explicit phase prompt before starting new work.
+- None queued. A future phase may add Google Calendar sync to bookings
+  (deferred, out of scope for Phase F — `migration_bookings.sql`'s comment
+  block notes it would only add columns, not restructure what's here).
+  Wait for an explicit phase prompt before starting new work.
 
 ---
 
-## Architecture Summary (as of Phase E)
+## Architecture Summary (as of Phase F)
 
 - **Framework**: Next.js 16 (App Router), TypeScript strict (`npx tsc --noEmit`
   must be zero errors), Tailwind v4. Hosted on Vercel, deployed from the
@@ -1055,16 +1194,20 @@ expense row too). `/api/dashboard?month=2026-12` confirmed back to
   independently, neither depends on the other.
 - **Money model**: `expected = total_prints×500 + extra_prints×250 +
   system_prints_500×500 + system_prints_250×250` (never used for actual
-  revenue, only as a "should have collected" comparison). Actual revenue =
-  `cash_received + bank_received`. Entry-level net = revenue −
-  `entry_expenses` for that shift. Every rupee out is one row in the
-  unified `expenses` table (Phase D); dashboard net profit = month's total
-  revenue − that month's `expenses` (by `expense_date`, all statuses —
-  marking a row paid never moves it between months). Free/waste prints are
-  tracking-only, never multiplied into any money figure.
+  revenue, only as a "should have collected" comparison). Actual shift
+  revenue = `cash_received + bank_received`. Entry-level net = revenue −
+  `entry_expenses` for that shift. Booking (paid client event) revenue is
+  cash-basis and payment-date-driven — see the Phase F notes above; never
+  `amount_charged` or `event_date`. Total revenue = shift-entry revenue +
+  booking revenue. Every rupee out is one row in the unified `expenses`
+  table (Phase D); dashboard net profit = total revenue − that month's
+  `expenses` (by `expense_date`, all statuses — marking a row paid never
+  moves it between months). Free/waste prints are tracking-only, never
+  multiplied into any money figure.
 - **Screens**: `/login` (PIN), `/entry` (employee shift log) + `/reimburse`
   ("My Expenses", employee's own money-out log) + `/expenses` (owner's full
-  money-out screen — log, filter, mark-paid, delete), `/attendance` +
+  money-out screen — log, filter, mark-paid, delete) + `/bookings` (owner's
+  paid client-event log — create, edit, cancel, delete), `/attendance` +
   `/dashboard` + `/entries` (owner-only). `components/BottomNav.tsx`
   renders the role-appropriate tab set plus sign-out on every authenticated
   screen. No accounting jargon in any screen's copy — see the vocabulary
