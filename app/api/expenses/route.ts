@@ -22,6 +22,7 @@ const SELECT = `
   related_user_id, shift_entry_id, venue_id, logged_by, created_at,
   payer:users!expenses_payer_user_id_fkey(name),
   related:users!expenses_related_user_id_fkey(name),
+  logger:users!expenses_logged_by_fkey(name),
   venues(name)
 `;
 

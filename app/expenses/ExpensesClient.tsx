@@ -2,39 +2,51 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import BottomNav from "@/components/BottomNav";
-import { EMPLOYEE_CATEGORIES, type EmployeeCategory } from "@/lib/categories";
+import { CATEGORIES, type Category } from "@/lib/categories";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Venue { id: string; name: string }
+interface Employee { id: string; name: string }
 
 interface Props {
   user: { id: string; name: string; role: string };
   venues: Venue[];
+  employees: Employee[];
 }
 
-// "My Expenses" — the employee-facing view onto the unified `expenses` table
-// (Phase D API, Phase E screen). Employees only ever see and log their own
-// employee-paid rows; the API enforces that server-side regardless of what
-// this client sends. Owner-facing money-out lives on /expenses instead.
+// Matches the SELECT in GET /api/expenses.
 interface ExpenseRow {
   id: string;
+  expense_date: string;
   category: string;
   amount: number;
   description: string | null;
   receipt_url: string | null;
-  reimbursement_status: string | null;
-  expense_date: string;
+  paid_by: "company" | "employee";
+  payer_user_id: string | null;
+  reimbursement_status: "pending" | "paid" | null;
+  related_user_id: string | null;
+  shift_entry_id: string | null;
   venue_id: string | null;
+  logged_by: string;
+  payer: { name: string } | null;
+  related: { name: string } | null;
+  logger: { name: string } | null;
   venues: { name: string } | null;
 }
 
+type PaidByChoice = "company" | "employee";
+
 interface FormState {
-  category: EmployeeCategory;
+  category: Category;
   amount: string;
   venueId: string;
   expenseDate: string;
   note: string;
+  paidBy: PaidByChoice;
+  payerUserId: string;
+  relatedUserId: string;
 }
 
 interface Toast { type: "success" | "error"; message: string }
@@ -75,12 +87,21 @@ function pkr(n: number) {
 }
 
 function blankForm(): FormState {
-  return { category: "Petrol", amount: "", venueId: "", expenseDate: localToday(), note: "" };
+  return {
+    category: "Operational",
+    amount: "",
+    venueId: "",
+    expenseDate: localToday(),
+    note: "",
+    paidBy: "company",
+    payerUserId: "",
+    relatedUserId: "",
+  };
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export default function ReimburseClient({ user, venues }: Props) {
+export default function ExpensesClient({ user, venues, employees }: Props) {
   const [form, setForm] = useState<FormState>(blankForm);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -89,11 +110,14 @@ export default function ReimburseClient({ user, venues }: Props) {
 
   // Filter state
   const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterPaidBy, setFilterPaidBy] = useState<"all" | "company" | "employee">("all");
 
   // List state
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [pendingToggle, setPendingToggle] = useState<Set<string>>(new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -106,6 +130,8 @@ export default function ReimburseClient({ user, venues }: Props) {
     if (n <= 0) return "Enter an amount greater than 0";
     return undefined;
   })();
+  const payerError =
+    form.paidBy === "employee" && !form.payerUserId ? "Pick who paid" : undefined;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,8 +146,8 @@ export default function ReimburseClient({ user, venues }: Props) {
     try {
       const params = new URLSearchParams({
         month: filterMonth,
-        userId: user.id,
-        paidBy: "employee",
+        paidBy: filterPaidBy,
+        userId: "all",
       });
       const res = await fetch(`/api/expenses?${params}`);
       if (res.ok) {
@@ -136,14 +162,16 @@ export default function ReimburseClient({ user, venues }: Props) {
     } finally {
       setListLoading(false);
     }
-  }, [filterMonth, user.id]);
+  }, [filterMonth, filterPaidBy]);
 
   useEffect(() => { void fetchList(); }, [fetchList]);
 
+  const visibleRows = filterCategory === "all" ? rows : rows.filter((r) => r.category === filterCategory);
+
   const handleSubmit = async () => {
     setSubmitAttempted(true);
-    if (amountError) {
-      showToast("error", amountError);
+    if (amountError || payerError) {
+      showToast("error", amountError ?? payerError ?? "Fix the form and try again");
       return;
     }
 
@@ -151,7 +179,6 @@ export default function ReimburseClient({ user, venues }: Props) {
     let receiptUrl: string | null = null;
 
     try {
-      // Upload receipt if one was selected
       if (receiptFile) {
         setUploading(true);
         const fd = new FormData();
@@ -179,6 +206,9 @@ export default function ReimburseClient({ user, venues }: Props) {
           expenseDate: form.expenseDate,
           description: form.note,
           receiptUrl,
+          paidBy: form.paidBy,
+          payerUserId: form.paidBy === "employee" ? form.payerUserId : null,
+          relatedUserId: form.category === "Salary" && form.relatedUserId ? form.relatedUserId : null,
         }),
       });
 
@@ -201,6 +231,35 @@ export default function ReimburseClient({ user, venues }: Props) {
     }
   };
 
+  const toggleStatus = async (row: ExpenseRow) => {
+    const next = row.reimbursement_status === "paid" ? "pending" : "paid";
+
+    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, reimbursement_status: next } : r)));
+    setPendingToggle((prev) => new Set(prev).add(row.id));
+
+    try {
+      const res = await fetch(`/api/expenses/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reimbursementStatus: next }),
+      });
+      if (!res.ok) {
+        setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+        const e = (await res.json()) as { error?: string };
+        showToast("error", e.error ?? "Couldn't update — try again");
+      }
+    } catch {
+      setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+      showToast("error", "Couldn't update — try again");
+    } finally {
+      setPendingToggle((prev) => {
+        const next2 = new Set(prev);
+        next2.delete(row.id);
+        return next2;
+      });
+    }
+  };
+
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -220,18 +279,24 @@ export default function ReimburseClient({ user, venues }: Props) {
     }
   };
 
-  // Running total of pending (still-waiting) expenses for the month
-  const youreOwed = rows
-    .filter((r) => r.reimbursement_status !== "paid")
-    .reduce((s, r) => s + r.amount, 0);
+  // Totals for the month
+  const totalExpenses = rows.reduce((s, r) => s + r.amount, 0);
+  const owedByEmployee = employees.reduce<Record<string, number>>((acc, emp) => {
+    acc[emp.id] = rows
+      .filter((r) => r.paid_by === "employee" && r.payer_user_id === emp.id && r.reimbursement_status === "pending")
+      .reduce((s, r) => s + r.amount, 0);
+    return acc;
+  }, {});
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
       {/* Header */}
       <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
         style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <span className="font-semibold" style={{ color: "#C9A84C" }}>My Expenses</span>
-        <span className="text-sm" style={{ color: "#8A9BAD" }}>{user.name}</span>
+        <span className="font-semibold" style={{ color: "#C9A84C" }}>Expenses</span>
+        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
+          Owner
+        </span>
       </header>
 
       {/* Toast */}
@@ -276,23 +341,36 @@ export default function ReimburseClient({ user, venues }: Props) {
           <div className="rounded-2xl p-4 space-y-4"
             style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
 
+            {/* Date */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Date</label>
+              <input type="date" value={form.expenseDate}
+                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
+                className="input-base w-full" />
+            </div>
+
             {/* Category */}
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Category</label>
-              <div className="grid grid-cols-2 gap-2">
-                {EMPLOYEE_CATEGORIES.map((cat) => (
-                  <button key={cat} onClick={() => setForm((f) => ({ ...f, category: cat }))}
-                    className="py-2.5 rounded-xl text-sm font-medium transition-all"
-                    style={{
-                      backgroundColor: form.category === cat ? "rgba(201,168,76,0.15)" : "#0B1929",
-                      color: form.category === cat ? "#C9A84C" : "#8A9BAD",
-                      border: form.category === cat ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.15)",
-                    }}>
-                    {cat}
-                  </button>
-                ))}
-              </div>
+              <select value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
+                className="input-base w-full">
+                {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+              </select>
             </div>
+
+            {/* Salary for */}
+            {form.category === "Salary" && (
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Salary for</label>
+                <select value={form.relatedUserId}
+                  onChange={(e) => setForm((f) => ({ ...f, relatedUserId: e.target.value }))}
+                  className="input-base w-full">
+                  <option value="">— Not specific to one person —</option>
+                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Amount */}
             <div>
@@ -306,6 +384,45 @@ export default function ReimburseClient({ user, venues }: Props) {
               </div>
               {submitAttempted && amountError && (
                 <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{amountError}</p>
+              )}
+            </div>
+
+            {/* Who paid */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Who paid?</label>
+              <div className="flex gap-2">
+                <button onClick={() => setForm((f) => ({ ...f, paidBy: "company" }))}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: form.paidBy === "company" ? "rgba(201,168,76,0.15)" : "#0B1929",
+                    color: form.paidBy === "company" ? "#C9A84C" : "#8A9BAD",
+                    border: form.paidBy === "company" ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.15)",
+                  }}>
+                  Company paid
+                </button>
+                <button onClick={() => setForm((f) => ({ ...f, paidBy: "employee" }))}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: form.paidBy === "employee" ? "rgba(201,168,76,0.15)" : "#0B1929",
+                    color: form.paidBy === "employee" ? "#C9A84C" : "#8A9BAD",
+                    border: form.paidBy === "employee" ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.15)",
+                  }}>
+                  Staff member paid
+                </button>
+              </div>
+              {form.paidBy === "employee" && (
+                <>
+                  <select value={form.payerUserId}
+                    onChange={(e) => setForm((f) => ({ ...f, payerUserId: e.target.value }))}
+                    className="input-base w-full mt-2"
+                    style={{ borderColor: submitAttempted && payerError ? "#C45A4A" : undefined }}>
+                    <option value="">— Who? —</option>
+                    {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                  </select>
+                  {submitAttempted && payerError && (
+                    <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{payerError}</p>
+                  )}
+                </>
               )}
             </div>
 
@@ -323,18 +440,10 @@ export default function ReimburseClient({ user, venues }: Props) {
               )}
             </div>
 
-            {/* Date */}
+            {/* Description */}
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Date</label>
-              <input type="date" value={form.expenseDate}
-                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-                className="input-base w-full" />
-            </div>
-
-            {/* Note */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Note</label>
-              <input type="text" placeholder="e.g. Fuel to Third Culture" value={form.note}
+              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Description</label>
+              <input type="text" placeholder="e.g. August rent" value={form.note}
                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                 className="input-base w-full" />
             </div>
@@ -371,10 +480,10 @@ export default function ReimburseClient({ user, venues }: Props) {
           </div>
         </section>
 
-        {/* ── Past expenses ────────────────────────────────────── */}
+        {/* ── Filters + Totals ─────────────────────────────────── */}
         <section>
           <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            Past Expenses
+            All Expenses
           </p>
           <div className="rounded-2xl p-4 space-y-3"
             style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
@@ -394,12 +503,36 @@ export default function ReimburseClient({ user, venues }: Props) {
               </button>
             </div>
 
-            {/* Running total */}
-            <div className="pt-1" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-              <span className="text-xs" style={{ color: "#8A9BAD" }}>You're owed: </span>
-              <span className="text-sm font-semibold" style={{ color: youreOwed > 0 ? "#C9A84C" : "#8A9BAD" }}>
-                {pkr(youreOwed)}
-              </span>
+            {/* Paid-by filter */}
+            <div className="flex gap-2 flex-wrap">
+              <FilterChip label="All" active={filterPaidBy === "all"} onClick={() => setFilterPaidBy("all")} />
+              <FilterChip label="Company" active={filterPaidBy === "company"} onClick={() => setFilterPaidBy("company")} />
+              <FilterChip label="Staff" active={filterPaidBy === "employee"} onClick={() => setFilterPaidBy("employee")} />
+            </div>
+
+            {/* Category filter */}
+            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+              className="input-base w-full">
+              <option value="all">All categories</option>
+              {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+
+            {/* Totals */}
+            <div className="space-y-1.5 pt-1" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
+              <div>
+                <span className="text-xs" style={{ color: "#8A9BAD" }}>Total this month: </span>
+                <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(totalExpenses)}</span>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {employees.map((emp) => (
+                  <div key={emp.id}>
+                    <span className="text-xs" style={{ color: "#8A9BAD" }}>Owes {emp.name}: </span>
+                    <span className="text-xs font-semibold" style={{ color: (owedByEmployee[emp.id] ?? 0) > 0 ? "#C9A84C" : "#8A9BAD" }}>
+                      {pkr(owedByEmployee[emp.id] ?? 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -416,11 +549,15 @@ export default function ReimburseClient({ user, venues }: Props) {
                 Try again
               </button>
             </div>
-          ) : rows.length === 0 ? (
+          ) : visibleRows.length === 0 ? (
             <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>No expenses for this period</div>
           ) : (
-            rows.map((row) => {
+            visibleRows.map((row) => {
+              const isStaffPaid = row.paid_by === "employee";
               const isPaid = row.reimbursement_status === "paid";
+              const isShiftLinked = !!row.shift_entry_id;
+              const isToggling = pendingToggle.has(row.id);
+
               return (
                 <div key={row.id} className="rounded-xl p-3.5"
                   style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
@@ -431,16 +568,24 @@ export default function ReimburseClient({ user, venues }: Props) {
                           style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
                           {row.category}
                         </span>
-                        {row.venues && (
-                          <span className="text-xs" style={{ color: "#8A9BAD" }}>{row.venues.name}</span>
+                        {row.related && (
+                          <span className="text-xs" style={{ color: "#8A9BAD" }}>for {row.related.name}</span>
                         )}
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{
-                            backgroundColor: isPaid ? "rgba(201,168,76,0.15)" : "rgba(138,155,173,0.15)",
-                            color: isPaid ? "#C9A84C" : "#8A9BAD",
-                          }}>
-                          {isPaid ? "Paid back" : "Waiting"}
-                        </span>
+                        {row.venues && (
+                          <span className="text-xs" style={{ color: "#8A9BAD" }}>· {row.venues.name}</span>
+                        )}
+                        {isStaffPaid && (
+                          <button onClick={() => { if (!isToggling) void toggleStatus(row); }}
+                            disabled={isToggling}
+                            className="text-xs px-2 py-0.5 rounded-full font-medium"
+                            style={{
+                              backgroundColor: isPaid ? "rgba(201,168,76,0.15)" : "rgba(196,90,74,0.15)",
+                              color: isPaid ? "#C9A84C" : "#C45A4A",
+                              opacity: isToggling ? 0.6 : 1,
+                            }}>
+                            {isPaid ? "Paid back" : `Owes ${row.payer?.name ?? "employee"}`}
+                          </button>
+                        )}
                       </div>
                       {row.description && (
                         <p className="text-sm mt-1 truncate" style={{ color: "#E8EFF5" }}>{row.description}</p>
@@ -459,12 +604,17 @@ export default function ReimburseClient({ user, venues }: Props) {
                           </>
                         )}
                       </p>
+                      {isShiftLinked && (
+                        <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                          From {row.logger?.name ?? "an employee"}&apos;s shift entry — edit the entry instead
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>
                         {pkr(row.amount)}
                       </span>
-                      {!isPaid && (
+                      {!isShiftLinked && (
                         <button onClick={() => setConfirmDeleteId(row.id)}
                           className="text-xs px-2 py-1 rounded-lg"
                           style={{ color: "#C45A4A", border: "1px solid rgba(196,90,74,0.35)" }}>
@@ -499,5 +649,18 @@ export default function ReimburseClient({ user, venues }: Props) {
         input[type="date"], input[type="time"] { color-scheme: dark; }
       `}</style>
     </div>
+  );
+}
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
+      style={{
+        backgroundColor: active ? "rgba(201,168,76,0.15)" : "#0B1929",
+        color: active ? "#C9A84C" : "#8A9BAD",
+        border: active ? "1px solid rgba(201,168,76,0.4)" : "1px solid rgba(200,212,224,0.12)",
+      }}>
+      {label}
+    </button>
   );
 }
