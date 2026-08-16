@@ -23,7 +23,7 @@ function IconEntry() {
     </svg>
   );
 }
-function IconReimburse() {
+function IconExpenses() {
   return (
     <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="8" />
@@ -70,14 +70,14 @@ function IconLogout() {
 
 const EMPLOYEE_NAV: NavItem[] = [
   { href: "/entry", label: "Daily Entry", icon: <IconEntry /> },
-  { href: "/reimburse", label: "Reimburse", icon: <IconReimburse /> },
+  { href: "/reimburse", label: "My Expenses", icon: <IconExpenses /> },
 ];
 
 const OWNER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: <IconDashboard /> },
   { href: "/attendance", label: "Attendance", icon: <IconAttendance /> },
   { href: "/entries", label: "Entries", icon: <IconEntries /> },
-  { href: "/reimburse", label: "Reimburse", icon: <IconReimburse /> },
+  { href: "/expenses", label: "Expenses", icon: <IconExpenses /> },
 ];
 
 export default function BottomNav({ role }: { role: string }) {

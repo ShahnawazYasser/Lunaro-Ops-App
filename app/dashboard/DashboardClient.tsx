@@ -12,6 +12,11 @@ interface VenueRevenue {
   shiftCount: number;
 }
 
+interface CategoryExpense {
+  category: string;
+  amount: number;
+}
+
 interface AttendanceSummaryRow {
   id: string;
   name: string;
@@ -22,11 +27,14 @@ interface DashboardResponse {
   totalRevenue: number;
   operationalExpenses: number;
   reimbursements: number;
+  totalExpenses: number;
+  owedToEmployees: number;
   netProfit: number;
   freePrintsCount: number;
   freePrintsCost: number;
   wastePrints: number;
   revenueByVenue: VenueRevenue[];
+  expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
 }
@@ -90,7 +98,7 @@ export default function DashboardClient() {
 
   useEffect(() => { void fetchDashboard(month); }, [month, fetchDashboard]);
 
-  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.totalRevenue > 0 || data.reimbursements > 0);
+  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
@@ -152,7 +160,7 @@ export default function DashboardClient() {
               {pkr(data.netProfit)}
             </p>
             <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
-              Revenue − operational expenses − reimbursements
+              Revenue − total expenses
             </p>
           </section>
 
@@ -165,8 +173,12 @@ export default function DashboardClient() {
           {/* ── Stat cards ───────────────────────────────────────── */}
           <section className="grid grid-cols-2 gap-3">
             <StatCard label="Total Revenue" value={pkr(data.totalRevenue)} />
-            <StatCard label="Operational Expenses" value={pkr(data.operationalExpenses)} />
-            <StatCard label="Employee Reimbursements" value={pkr(data.reimbursements)} />
+            <StatCard label="Total Expenses" value={pkr(data.totalExpenses)} />
+            <StatCard
+              label="Owed to Staff"
+              value={pkr(data.owedToEmployees)}
+              accent={data.owedToEmployees > 0}
+            />
             <StatCard label="Free Prints Given" value={`${data.freePrintsCount}`} sub={pkr(data.freePrintsCost)} />
             <StatCard label="Waste Prints" value={`${data.wastePrints}`} />
           </section>
@@ -193,6 +205,29 @@ export default function DashboardClient() {
                       </p>
                     </div>
                     <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(v.revenue)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* ── Expenses by category ─────────────────────────────── */}
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
+              Expenses by Category
+            </p>
+            <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+              {data.expensesByCategory.length === 0 ? (
+                <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
+                  No expenses logged this month
+                </div>
+              ) : (
+                data.expensesByCategory.map((c, i) => (
+                  <div key={c.category}
+                    className="flex items-center justify-between px-3 py-2.5"
+                    style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
+                    <p className="text-sm font-medium">{c.category}</p>
+                    <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(c.amount)}</span>
                   </div>
                 ))
               )}
@@ -238,11 +273,15 @@ export default function DashboardClient() {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div className="rounded-2xl p-3.5" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+    <div className="rounded-2xl p-3.5"
+      style={{
+        backgroundColor: accent ? "rgba(201,168,76,0.10)" : "#16293D",
+        border: accent ? "1px solid rgba(201,168,76,0.3)" : "1px solid rgba(200,212,224,0.10)",
+      }}>
       <p className="text-xs" style={{ color: "#8A9BAD" }}>{label}</p>
-      <p className="text-lg font-semibold mt-0.5" style={{ color: "#E8EFF5" }}>{value}</p>
+      <p className="text-lg font-semibold mt-0.5" style={{ color: accent ? "#C9A84C" : "#E8EFF5" }}>{value}</p>
       {sub && <p className="text-xs mt-0.5" style={{ color: "#C9A84C" }}>{sub}</p>}
     </div>
   );

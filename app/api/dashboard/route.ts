@@ -19,13 +19,18 @@ export interface AttendanceSummaryRow {
   daysPresent: number;
 }
 
+export interface CategoryExpense {
+  category: string;
+  amount: number;
+}
+
 export interface DashboardResponse {
   totalRevenue: number;
   // Kept for the current dashboard UI: the shift-linked slice of expenses.
   operationalExpenses: number;
   // Kept for the current dashboard UI: employee-paid expenses, all statuses.
   reimbursements: number;
-  // Phase D additions — the honest split. Phase E reworks the UI onto these.
+  // Phase D additions — the honest split, now the basis of the Phase E UI.
   totalExpenses: number;
   owedToEmployees: number;
   netProfit: number;
@@ -33,6 +38,7 @@ export interface DashboardResponse {
   freePrintsCost: number;
   wastePrints: number;
   revenueByVenue: VenueRevenue[];
+  expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
 }
@@ -73,7 +79,7 @@ export async function GET(request: NextRequest) {
   // Marking one paid never moves it between months.
   const { data: expenseRows, error: expErr } = await supabaseAdmin
     .from("expenses")
-    .select("amount, paid_by, reimbursement_status, shift_entry_id")
+    .select("amount, category, paid_by, reimbursement_status, shift_entry_id")
     .gte("expense_date", startDate)
     .lte("expense_date", endDate);
 
@@ -83,6 +89,7 @@ export async function GET(request: NextRequest) {
   let operationalExpenses = 0;
   let reimbursements = 0;
   let owedToEmployees = 0;
+  const categoryAgg = new Map<string, number>();
 
   for (const e of expenseRows ?? []) {
     totalExpenses += e.amount;
@@ -91,7 +98,12 @@ export async function GET(request: NextRequest) {
       reimbursements += e.amount;
       if (e.reimbursement_status === "pending") owedToEmployees += e.amount;
     }
+    categoryAgg.set(e.category, (categoryAgg.get(e.category) ?? 0) + e.amount);
   }
+
+  const expensesByCategory: CategoryExpense[] = Array.from(categoryAgg.entries())
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
 
   // Venue labels
   const { data: venues, error: venueErr } = await supabaseAdmin.from("venues").select("id, name");
@@ -178,6 +190,7 @@ export async function GET(request: NextRequest) {
     freePrintsCost: freePrintsCount * FREE_PRINT_COST,
     wastePrints,
     revenueByVenue,
+    expensesByCategory,
     attendance,
     daysInMonth,
   };

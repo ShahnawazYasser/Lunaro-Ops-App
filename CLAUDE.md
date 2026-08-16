@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-08-15 (Phase D). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-08-17 (Phase E). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -904,32 +904,135 @@ TEST". All were deleted afterward — the database is back to exactly the
 post-migration baseline (12 expense rows / PKR 78,500; 61 shift entries;
 December empty).
 
+**Phase E — Owner Expenses Screen, "My Expenses" Redesign, Dashboard Rework**
+
+- **New owner-only screen `/expenses`** (`app/expenses/page.tsx` +
+  `ExpensesClient.tsx`) — the full owner view onto the unified `expenses`
+  table, replacing the owner's use of `/reimburse`.
+  - Log form: date, category (full `CATEGORIES` list, dropdown), a
+    "Salary for" employee picker shown only when category = Salary
+    (`related_user_id`), amount, "Who paid?" toggle (Company paid /
+    Staff member paid — revealing a payer picker for Ahsan/Farhan when
+    staff), optional venue, description, receipt upload. No accounting
+    jargon in the labels — see the vocabulary rule below.
+  - List for the selected month: date, category, description, amount;
+    staff-paid rows get a tap-to-toggle pill reading "Owes {name}" /
+    "Paid back" (calls `PATCH /api/expenses/[id]`, optimistic with
+    revert on failure). Filters: category (all + each) and paid-by
+    (all/company/staff). A totals strip shows the month's total expenses
+    and, per employee, "Owes {name}: PKR X" in gold when nonzero.
+  - Delete: any row except shift-linked ones. Shift-linked rows (the
+    API's own 409 rule) show "From {employee}'s shift entry — edit the
+    entry instead" instead of a delete control — the employee name comes
+    from the row's `logger` (the shift's own submitter), not `payer` or
+    `related`. All deletes go through a confirm dialog.
+
+- **`/reimburse` evolved into "My Expenses"** (employee-facing; route
+  intentionally unchanged to avoid churn, only the header/nav label
+  changed). Log form trimmed to `EMPLOYEE_CATEGORIES` (Petrol, Food,
+  Transport, Misc) as a 2×2 grid — the API forces `paid_by`/`payer_user_id`
+  regardless of what the client sends, so the client no longer needs to
+  send them. List shows only the signed-in employee's own rows with a
+  plain "Waiting" / "Paid back" pill and a **Delete button only on their
+  own still-pending rows** (confirm dialog; the API's 403/409 rules are
+  the real enforcement — a paid or someone-else's row simply never shows
+  the button, no error state needed for something that can't be
+  attempted). Running total "You're owed: PKR X" is month-scoped via the
+  existing month switcher. `app/reimburse/page.tsx` no longer loads the
+  employee list — that was only needed for the old owner-facing filter
+  chips, which moved to `/expenses`.
+
+- **Dashboard rework** (`app/dashboard/DashboardClient.tsx`,
+  `app/api/dashboard/route.ts`): stat cards are now Total Revenue · Total
+  Expenses · Owed to Staff (gold-accented `StatCard` when nonzero) · Free
+  Prints (count + est. cost) · Waste Prints — replacing the old
+  Revenue/Operational Expenses/Reimbursements set. Net profit hero card
+  copy updated to "Revenue − total expenses" (was stale since Phase D
+  shipped the API-side formula). Added an "Expenses by Category" list
+  (category, amount, sorted desc) under Revenue by Venue, fed by a new
+  `expensesByCategory` field the dashboard API now computes in the same
+  pass as the existing expense query — confirmed to always sum to
+  `totalExpenses` (same source rows, just grouped).
+
+- **`GET /api/expenses`** SELECT gained one more pinned embed:
+  `logger:users!expenses_logged_by_fkey(name)` — needed so the owner
+  screen can name the employee on a shift-linked row without a second
+  request. Same FK-pinning rule as the other two `users` embeds on this
+  table (Phase D note).
+
+- **Nav** (`components/BottomNav.tsx`): owner tabs are now Dashboard ·
+  Attendance · Entries · Expenses (still 4 items, same slot the old
+  "Reimburse" tab held, now pointing at `/expenses`). Employee tabs are
+  Entry · My Expenses (still 2 items, same route). Item *counts* are
+  unchanged from Phase 5's 375px fix, so the crowding fix made then still
+  holds; re-verified live in a real (Chrome-minimum ~500px) narrow
+  viewport — no wrapping or truncation on either role's nav.
+
+- **UI vocabulary rule (permanent):** employee-facing and owner-facing
+  copy alike must never surface internal field/enum names — no
+  "reimbursement status", no "payer_user_id", no "paid_by". Say "Who
+  paid?" / "Paid back?" / "Waiting" / "Owes {name}" instead. This was
+  already the working style from Phase D's plain-language DB design;
+  Phase E just extends it to every place that touches these fields in a
+  screen. Any future screen touching `expenses` must follow the same
+  rule.
+
+### Phase E verification (production build, `npm run start`, against the live DB)
+1. Owner: logged a Rent (company), a Salary linked to Farhan (company,
+   `related_user_id` set), and a Petrol on Farhan's behalf (staff-paid,
+   pending) — all three listed with correct badges/pills; dashboard showed
+   `totalExpenses` 56,200 and `owedToEmployees` 1,200 (matching the one
+   pending staff-paid row). Toggled that row to "Paid back" via PATCH —
+   `owedToEmployees` dropped to 0 while `totalExpenses`/`netProfit` stayed
+   put (accrual rule intact).
+2. Employee (Farhan): logged a Petrol expense (visible end-to-end through
+   the real UI at a ~500px viewport — Chrome's minimum window width, the
+   closest this environment's browser tool can get to 375px), saw
+   "Waiting", deleted it via the confirm dialog, confirmed removed from
+   the DB and from the list; confirmed the already-paid row from step 1
+   never rendered a Delete button, and a raw API attempt against it
+   returned 409.
+3. A real shift-linked expense (fresh test shift + expense row) showed
+   "From Farhan's shift entry — edit the entry instead" in the owner list
+   with no delete control; a raw `DELETE` against it still returned the
+   API's 409 as before Phase E.
+4. Dashboard hand-check (test month 2026-12): revenue 2,500, totalExpenses
+   56,500 (40,000 Salary + 15,000 Rent + 1,200 Petrol + 300 shift-linked
+   Operational), netProfit −54,000, expensesByCategory summed to exactly
+   56,500 — all matched hand arithmetic.
+5. Full click-through of both roles confirmed live in-browser (not just
+   via API) for `/dashboard`, `/expenses`, and `/reimburse` (My Expenses):
+   category reveal-on-Salary, paid-by toggle reveal, delete confirm
+   dialog, and toast states all behaved as designed.
+6. `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
+
+**Test data:** all writes used a far-future date (2026-12-29/30, described
+"PHASE E TEST") plus one same-day live-UI expense Farhan logged and then
+deleted himself. Everything was removed afterward (expenses deleted via
+the API/UI; the one test shift entry — which has no delete API — removed
+directly via the Supabase MCP server, confirmed cascade-removed its linked
+expense row too). `/api/dashboard?month=2026-12` confirmed back to
+0/0/0 afterward.
+
 ### In progress
-- Nothing. Phases B, C and D are complete on the `develop` branch, not yet
-  merged to `master`/deployed.
+- Nothing. Phases A–E are complete on the `develop` branch, not yet merged
+  to `master`/deployed.
 
 ### Known issues
-- **The live deployment on `master` is broken until Phase D ships.** The
-  migration renamed `entry_expenses` and `reimbursements` in the production
-  database, and the currently-deployed `master` build still queries those
-  names. `/reimburse`, `/dashboard` and `/entries` will error in production
-  until `develop` is merged and deployed. Nothing was lost — this is purely
-  a code-vs-schema mismatch that ends the moment Phase D deploys.
-- `app/dashboard/DashboardClient.tsx` still labels the net profit card
-  "Revenue − operational expenses − reimbursements". That reads correctly
-  today (no company-paid non-shift expenses exist yet) but becomes wrong as
-  soon as the owner logs one, since net is now `revenue − totalExpenses`.
-  Left untouched deliberately — Phase D was API-only and Phase E reworks
-  this UI onto `totalExpenses` / `owedToEmployees`.
+- **The live deployment on `master` is broken until this work ships.** The
+  Phase D migration renamed `entry_expenses` and `reimbursements` in the
+  production database, and the currently-deployed `master` build still
+  queries those names. `/reimburse`, `/dashboard`, `/entries`, and the new
+  `/expenses` will error in production until `develop` is merged and
+  deployed. Nothing was lost — this is purely a code-vs-schema mismatch
+  that ends the moment this work deploys.
 
 ### Next phase
-- Phase E — the screens for the new model (owner expense logging, the
-  reimburse screen redesign, dashboard rework onto `totalExpenses` /
-  `owedToEmployees`). Do not begin it without an explicit phase prompt.
+- None queued. Wait for an explicit phase prompt before starting new work.
 
 ---
 
-## Architecture Summary (as of Phase 5)
+## Architecture Summary (as of Phase E)
 
 - **Framework**: Next.js 16 (App Router), TypeScript strict (`npx tsc --noEmit`
   must be zero errors), Tailwind v4. Hosted on Vercel, deployed from the
@@ -954,14 +1057,18 @@ December empty).
   system_prints_500×500 + system_prints_250×250` (never used for actual
   revenue, only as a "should have collected" comparison). Actual revenue =
   `cash_received + bank_received`. Entry-level net = revenue −
-  `entry_expenses` for that shift. Dashboard net profit = month's total
-  revenue − that month's `entry_expenses` − that month's `reimbursements`
-  (by `expense_date`, all statuses). Free/waste prints are tracking-only,
-  never multiplied into any money figure.
-- **Screens**: `/login` (PIN), `/entry` + `/reimburse` (employee + owner,
-  role-aware), `/attendance` + `/dashboard` + `/entries` (owner-only).
-  `components/BottomNav.tsx` renders the role-appropriate tab set plus
-  sign-out on every authenticated screen.
+  `entry_expenses` for that shift. Every rupee out is one row in the
+  unified `expenses` table (Phase D); dashboard net profit = month's total
+  revenue − that month's `expenses` (by `expense_date`, all statuses —
+  marking a row paid never moves it between months). Free/waste prints are
+  tracking-only, never multiplied into any money figure.
+- **Screens**: `/login` (PIN), `/entry` (employee shift log) + `/reimburse`
+  ("My Expenses", employee's own money-out log) + `/expenses` (owner's full
+  money-out screen — log, filter, mark-paid, delete), `/attendance` +
+  `/dashboard` + `/entries` (owner-only). `components/BottomNav.tsx`
+  renders the role-appropriate tab set plus sign-out on every authenticated
+  screen. No accounting jargon in any screen's copy — see the vocabulary
+  rule in the Phase E notes above.
 - **Live URL**: https://lunaro-ops-app.vercel.app
 
 ## Adding a New Employee
