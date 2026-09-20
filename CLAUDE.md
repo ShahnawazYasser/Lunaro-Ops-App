@@ -1151,17 +1151,15 @@ as prior phases). `bookings` confirmed empty and both test months'
 **This closes improvement round A–F.**
 
 ### In progress
-- Nothing. Phases A–F are complete on the `develop` branch, not yet merged
-  to `master`/deployed.
+- Nothing. Phases A–F are complete, merged to `master`, and deployed —
+  confirmed 2026-09-20: `master` HEAD (`ef47db1`, "Merge branch 'develop'")
+  matches Vercel's latest READY production deployment for this project.
 
 ### Known issues
-- **The live deployment on `master` is broken until this work ships.** The
-  Phase D migration renamed `entry_expenses` and `reimbursements` in the
-  production database, and the currently-deployed `master` build still
-  queries those names. `/reimburse`, `/dashboard`, `/entries`, `/expenses`,
-  and the new `/bookings` will error in production until `develop` is
-  merged and deployed. Nothing was lost — this is purely a code-vs-schema
-  mismatch that ends the moment this work deploys.
+- None. The Phase D schema-rename-vs-deployed-code mismatch flagged after
+  Phase F is resolved — `develop` was merged to `master` and deployed
+  before this check, so `/reimburse`, `/dashboard`, `/entries`, `/expenses`,
+  and `/bookings` are all running against the current schema in production.
 
 ### Next phase
 - None queued. A future phase may add Google Calendar sync to bookings
