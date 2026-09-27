@@ -27,6 +27,7 @@ export interface ShiftEntryFormValues {
   systemPrints250: string;
   freePrints: string;
   wastePrints: string;
+  priceCharged: string;
   cashReceived: string;
   bankReceived: string;
   expenses: ExpenseValue[];
@@ -45,6 +46,10 @@ export interface ShiftEntryPayload {
   systemPrints250: number;
   freePrints: number;
   wastePrints: number;
+  // Informational only — what price was offered that day. Never used to
+  // compute, validate, or cross-check cashReceived/bankReceived; revenue
+  // stays exactly cash_received + bank_received.
+  priceCharged: number | null;
   cashReceived: number;
   bankReceived: number;
   expenses: { description: string; amount: number }[];
@@ -91,6 +96,7 @@ export function blankShiftEntryValues(): ShiftEntryFormValues {
     systemPrints250: "",
     freePrints: "",
     wastePrints: "",
+    priceCharged: "",
     cashReceived: "",
     bankReceived: "",
     expenses: [{ description: "", amount: "" }],
@@ -141,6 +147,12 @@ function validateForm(form: ShiftEntryFormValues): {
     if (raw.trim() !== "" && parseFloat(raw) < 0) {
       fieldErrors[key] = NEGATIVE_MSG;
     }
+  }
+
+  // priceCharged is informational-only, but if given at all it must be a
+  // real price — unlike the checks above, 0 isn't valid here either.
+  if (form.priceCharged.trim() !== "" && parseFloat(form.priceCharged) <= 0) {
+    fieldErrors.priceCharged = "Must be a positive number";
   }
 
   const expenseErrors: Record<number, string> = {};
@@ -250,6 +262,7 @@ export default function ShiftEntryForm({
       systemPrints250: parseNum(form.systemPrints250),
       freePrints: parseNum(form.freePrints),
       wastePrints: parseNum(form.wastePrints),
+      priceCharged: form.priceCharged.trim() === "" ? null : parseFloat(form.priceCharged),
       cashReceived: parseNum(form.cashReceived),
       bankReceived: parseNum(form.bankReceived),
       expenses: form.expenses
@@ -408,6 +421,37 @@ export default function ShiftEntryForm({
           onChange={(v) => setField("wastePrints", v)}
           error={submitAttempted ? fieldErrors.wastePrints : undefined}
         />
+      </Section>
+
+      {/* ── Pricing ───────────────────────────────────────────── */}
+      <Section title="Pricing">
+        <p className="text-xs mb-1" style={{ color: "#8A9BAD" }}>
+          Optional — what price you were offering today, for reporting only.
+          This doesn&apos;t affect money collected below.
+        </p>
+        <Field label="Price offered today">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium shrink-0" style={{ color: "#8A9BAD" }}>
+              PKR
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="e.g. 300"
+              min="0"
+              value={form.priceCharged}
+              disabled={disabled}
+              onChange={(e) => setField("priceCharged", e.target.value)}
+              className="input-base flex-1"
+              style={{
+                borderColor: submitAttempted && fieldErrors.priceCharged ? "#C45A4A" : undefined,
+              }}
+            />
+          </div>
+          {submitAttempted && fieldErrors.priceCharged && (
+            <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{fieldErrors.priceCharged}</p>
+          )}
+        </Field>
       </Section>
 
       {/* ── Money Collected ──────────────────────────────────── */}

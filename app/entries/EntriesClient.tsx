@@ -31,6 +31,7 @@ interface EntryRow {
   system_prints_250: number;
   free_prints: number;
   waste_prints: number;
+  price_charged: number | null;
   cash_received: number;
   bank_received: number;
   clock_in: string | null;
@@ -120,6 +121,7 @@ function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
     systemPrints250: String(row.system_prints_250),
     freePrints: String(row.free_prints),
     wastePrints: String(row.waste_prints),
+    priceCharged: row.price_charged === null ? "" : String(row.price_charged),
     cashReceived: String(row.cash_received),
     bankReceived: String(row.bank_received),
     expenses: row.entry_expenses.length
@@ -471,6 +473,9 @@ export default function EntriesClient({ venues }: Props) {
                     </DetailSection>
 
                     <DetailSection title="Money">
+                      {row.price_charged !== null && (
+                        <EntryStat label="Price offered" value={pkr(row.price_charged)} />
+                      )}
                       <EntryStat label="Cash received" value={pkr(row.cash_received)} />
                       <EntryStat label="Bank received" value={pkr(row.bank_received)} />
                       <EntryStat label="Total received" value={pkr(amountReceived)} />

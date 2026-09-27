@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     .select(`
       id, user_id, entry_date, venue_id, event_name,
       total_prints, extra_prints, system_prints_500, system_prints_250,
-      free_prints, waste_prints, cash_received, bank_received,
+      free_prints, waste_prints, price_charged, cash_received, bank_received,
       clock_in, clock_out, notes, cash_collected, cash_collected_at,
       last_edited_by, last_edited_at,
       created_at,
@@ -63,6 +63,8 @@ interface EntryBody {
   systemPrints250: number;
   freePrints: number;
   wastePrints: number;
+  // Informational only — never used to compute or validate revenue.
+  priceCharged?: number | null;
   cashReceived: number;
   bankReceived: number;
   expenses: ExpenseInput[];
@@ -93,6 +95,7 @@ export async function POST(request: NextRequest) {
     systemPrints250,
     freePrints,
     wastePrints,
+    priceCharged,
     cashReceived,
     bankReceived,
     expenses,
@@ -104,6 +107,14 @@ export async function POST(request: NextRequest) {
 
   if (venueId === "event" && !eventName?.trim()) {
     return NextResponse.json({ error: "Event name is required" }, { status: 400 });
+  }
+
+  if (
+    priceCharged !== null &&
+    priceCharged !== undefined &&
+    (typeof priceCharged !== "number" || !Number.isFinite(priceCharged) || priceCharged <= 0)
+  ) {
+    return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
   }
 
   const userId = session.userId;
@@ -145,6 +156,7 @@ export async function POST(request: NextRequest) {
     system_prints_250: systemPrints250,
     free_prints: freePrints,
     waste_prints: wastePrints,
+    price_charged: priceCharged ?? null,
     cash_received: cashReceived,
     bank_received: bankReceived,
     notes: null,

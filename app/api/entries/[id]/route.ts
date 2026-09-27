@@ -21,6 +21,8 @@ interface EditBody {
   systemPrints250: number;
   freePrints: number;
   wastePrints: number;
+  // Informational only — never used to compute or validate revenue.
+  priceCharged?: number | null;
   cashReceived: number;
   bankReceived: number;
   expenses: ExpenseInput[];
@@ -60,6 +62,14 @@ export async function PUT(
     return NextResponse.json({ error: "Event name is required" }, { status: 400 });
   }
 
+  if (
+    body.priceCharged !== null &&
+    body.priceCharged !== undefined &&
+    (typeof body.priceCharged !== "number" || !Number.isFinite(body.priceCharged) || body.priceCharged <= 0)
+  ) {
+    return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
+  }
+
   const { data: existing, error: fetchError } = await supabaseAdmin
     .from("shift_entries")
     .select("id, user_id, entry_date")
@@ -96,6 +106,7 @@ export async function PUT(
       system_prints_250: body.systemPrints250,
       free_prints: body.freePrints,
       waste_prints: body.wastePrints,
+      price_charged: body.priceCharged ?? null,
       cash_received: body.cashReceived,
       bank_received: body.bankReceived,
       last_edited_by: session.userId,

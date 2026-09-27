@@ -78,6 +78,8 @@ export interface Database {
           system_prints_250: number;
           free_prints: number;
           waste_prints: number;
+          // Informational only (Chunk 3) — never used to compute revenue.
+          price_charged: number | null;
           cash_received: number;
           bank_received: number;
           clock_in: string | null;
@@ -102,6 +104,7 @@ export interface Database {
           system_prints_250?: number;
           free_prints?: number;
           waste_prints?: number;
+          price_charged?: number | null;
           cash_received?: number;
           bank_received?: number;
           clock_in?: string | null;
@@ -126,6 +129,7 @@ export interface Database {
           system_prints_250?: number;
           free_prints?: number;
           waste_prints?: number;
+          price_charged?: number | null;
           cash_received?: number;
           bank_received?: number;
           clock_in?: string | null;
