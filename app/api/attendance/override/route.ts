@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
+export const preferredRegion = "sin1";
+
 interface OverrideBody {
   userId: string;
   date: string;       // YYYY-MM-DD

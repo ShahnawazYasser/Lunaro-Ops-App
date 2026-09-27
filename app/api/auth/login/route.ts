@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { createSessionToken, sessionCookieConfig } from "@/lib/session";
 
+export const preferredRegion = "sin1";
+
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {

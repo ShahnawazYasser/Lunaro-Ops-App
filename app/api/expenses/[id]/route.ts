@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
+export const preferredRegion = "sin1";
+
 // ── PATCH /api/expenses/[id] ──────────────────────────────────────────────
 // Owner-only, single purpose: flip an employee-paid expense between
 // 'pending' and 'paid'. Nothing else about the row is touched.

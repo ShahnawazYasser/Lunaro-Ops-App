@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange, todayInKarachi } from "@/lib/dates";
 import { deriveAttendance } from "@/lib/attendance";
 
+export const preferredRegion = "sin1";
+
 const FREE_PRINT_COST = 500;
 
 export interface VenueRevenue {

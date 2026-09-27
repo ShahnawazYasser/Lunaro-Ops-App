@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange, todayInKarachi } from "@/lib/dates";
 import { deriveAttendance, type AttendanceDay, type EmployeeAttendance } from "@/lib/attendance";
 
+export const preferredRegion = "sin1";
+
 export type { AttendanceDay, EmployeeAttendance };
 
 // GET /api/attendance?month=2026-06

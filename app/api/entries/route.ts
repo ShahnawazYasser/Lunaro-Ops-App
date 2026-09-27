@@ -3,6 +3,8 @@ import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange } from "@/lib/dates";
 
+export const preferredRegion = "sin1";
+
 interface ExpenseInput {
   description: string;
   amount: number;

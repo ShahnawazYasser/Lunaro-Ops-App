@@ -3,6 +3,8 @@ import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { todayInKarachi } from "@/lib/dates";
 
+export const preferredRegion = "sin1";
+
 // Paid client-event bookings (Phase F). Owner-only, every method.
 //
 // CASH BASIS revenue: see migration_bookings.sql / supabase_schema.sql for

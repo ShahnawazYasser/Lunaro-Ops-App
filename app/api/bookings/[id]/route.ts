@@ -3,6 +3,8 @@ import { getSession } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { BookingStatus } from "@/lib/supabase/types";
 
+export const preferredRegion = "sin1";
+
 const VALID_STATUSES: BookingStatus[] = ["upcoming", "completed", "cancelled"];
 
 interface BookingBody {

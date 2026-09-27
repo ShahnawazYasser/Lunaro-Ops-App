@@ -5,6 +5,8 @@ import { monthRange } from "@/lib/dates";
 import { isCategory, isEmployeeCategory } from "@/lib/categories";
 import type { PaidBy, ReimbursementStatus } from "@/lib/supabase/types";
 
+export const preferredRegion = "sin1";
+
 // The unified money-out API (Phase D). Replaces /api/reimbursements.
 //
 //   paid_by = 'company'  → a normal business expense
