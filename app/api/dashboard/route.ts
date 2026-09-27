@@ -68,30 +68,74 @@ export async function GET(request: NextRequest) {
   const daysInMonth = Number(endDate.split("-")[2]);
   const todayStr = todayInKarachi();
 
-  // Shift entries for the month
-  const { data: shifts, error: shiftErr } = await supabaseAdmin
-    .from("shift_entries")
-    .select("id, user_id, entry_date, venue_id, cash_received, bank_received, free_prints, waste_prints")
-    .gte("entry_date", startDate)
-    .lte("entry_date", endDate);
+  // All independent Supabase queries for this month run in one batch —
+  // none of these depend on any other query's result. (attendance_overrides
+  // used to be filtered by the employees query's user ids first; that
+  // filter is dropped here since deriveAttendance already ignores any
+  // override row that doesn't match a known employee id, so the two queries
+  // can run in parallel instead of overrides waiting on employees.)
+  const [
+    { data: shifts, error: shiftErr },
+    { data: expenseRows, error: expErr },
+    { data: venues, error: venueErr },
+    { data: bookingRows, error: bookingErr },
+    { data: employees, error: empErr },
+    { data: overrides, error: overErr },
+  ] = await Promise.all([
+    // Shift entries for the month
+    supabaseAdmin
+      .from("shift_entries")
+      .select("id, user_id, entry_date, venue_id, cash_received, bank_received, free_prints, waste_prints")
+      .gte("entry_date", startDate)
+      .lte("entry_date", endDate),
+
+    // All money out for the month, in one query (Phase D — the unified
+    // `expenses` table replaced the old entry_expenses + reimbursements pair).
+    //
+    // Accrual rule: an expense counts in the month of its expense_date,
+    // regardless of when — or whether — an employee gets reimbursed for it.
+    // Marking one paid never moves it between months.
+    supabaseAdmin
+      .from("expenses")
+      .select("amount, category, paid_by, reimbursement_status, shift_entry_id")
+      .gte("expense_date", startDate)
+      .lte("expense_date", endDate),
+
+    // Venue labels
+    supabaseAdmin.from("venues").select("id, name"),
+
+    // Booking (paid client event) revenue — CASH BASIS (Phase F). A payment
+    // counts in the month its own date falls in; amount_charged and event_date
+    // play no role. A cancelled booking's already-received advance still
+    // counts — money doesn't get un-received by a status change.
+    supabaseAdmin
+      .from("bookings")
+      .select("advance_amount, advance_date, final_amount, final_date")
+      .or(
+        `and(advance_date.gte.${startDate},advance_date.lte.${endDate}),` +
+          `and(final_date.gte.${startDate},final_date.lte.${endDate})`
+      ),
+
+    // Attendance summary — same derivation logic as /api/attendance:
+    // present = a shift_entries row exists for that user+date, unless an
+    // attendance_overrides row exists for that date, which always wins.
+    supabaseAdmin.from("users").select("id, name").eq("role", "employee").order("name"),
+
+    supabaseAdmin
+      .from("attendance_overrides")
+      .select("user_id, override_date, is_present")
+      .gte("override_date", startDate)
+      .lte("override_date", endDate),
+  ]);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
+  if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
+  if (venueErr) return NextResponse.json({ error: venueErr.message }, { status: 500 });
+  if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
+  if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
+  if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
-
-  // All money out for the month, in one query (Phase D — the unified
-  // `expenses` table replaced the old entry_expenses + reimbursements pair).
-  //
-  // Accrual rule: an expense counts in the month of its expense_date,
-  // regardless of when — or whether — an employee gets reimbursed for it.
-  // Marking one paid never moves it between months.
-  const { data: expenseRows, error: expErr } = await supabaseAdmin
-    .from("expenses")
-    .select("amount, category, paid_by, reimbursement_status, shift_entry_id")
-    .gte("expense_date", startDate)
-    .lte("expense_date", endDate);
-
-  if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
 
   let totalExpenses = 0;
   let operationalExpenses = 0;
@@ -113,9 +157,6 @@ export async function GET(request: NextRequest) {
     .map(([category, amount]) => ({ category, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  // Venue labels
-  const { data: venues, error: venueErr } = await supabaseAdmin.from("venues").select("id, name");
-  if (venueErr) return NextResponse.json({ error: venueErr.message }, { status: 500 });
   const venueNameMap = new Map((venues ?? []).map((v) => [v.id, v.name]));
 
   // Revenue + free/waste print totals, grouped by venue
@@ -145,20 +186,6 @@ export async function GET(request: NextRequest) {
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  // Booking (paid client event) revenue — CASH BASIS (Phase F). A payment
-  // counts in the month its own date falls in; amount_charged and event_date
-  // play no role. A cancelled booking's already-received advance still
-  // counts — money doesn't get un-received by a status change.
-  const { data: bookingRows, error: bookingErr } = await supabaseAdmin
-    .from("bookings")
-    .select("advance_amount, advance_date, final_amount, final_date")
-    .or(
-      `and(advance_date.gte.${startDate},advance_date.lte.${endDate}),` +
-        `and(final_date.gte.${startDate},final_date.lte.${endDate})`
-    );
-
-  if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
-
   let bookingRevenue = 0;
   let bookingPaymentsCount = 0;
   for (const b of bookingRows ?? []) {
@@ -174,27 +201,7 @@ export async function GET(request: NextRequest) {
 
   totalRevenue += bookingRevenue;
 
-  // Attendance summary — same derivation logic as /api/attendance:
-  // present = a shift_entries row exists for that user+date, unless an
-  // attendance_overrides row exists for that date, which always wins.
-  const { data: employees, error: empErr } = await supabaseAdmin
-    .from("users")
-    .select("id, name")
-    .eq("role", "employee")
-    .order("name");
-
-  if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
   const employeeRows = employees ?? [];
-  const employeeIds = employeeRows.map((e) => e.id);
-
-  const { data: overrides, error: overErr } = await supabaseAdmin
-    .from("attendance_overrides")
-    .select("user_id, override_date, is_present")
-    .in("user_id", employeeIds.length > 0 ? employeeIds : [""])
-    .gte("override_date", startDate)
-    .lte("override_date", endDate);
-
-  if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
 
   const derivedAttendance = deriveAttendance(
     employeeRows,
