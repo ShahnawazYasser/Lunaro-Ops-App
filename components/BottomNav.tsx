@@ -68,6 +68,14 @@ function IconBookings() {
     </svg>
   );
 }
+function IconAssets() {
+  return (
+    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
+      <path d="M4 20V10l8-6 8 6v10" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 20v-6h6v6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function IconLogout() {
   return (
     <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24">
@@ -88,6 +96,7 @@ const OWNER_NAV: NavItem[] = [
   { href: "/entries", label: "Entries", icon: <IconEntries /> },
   { href: "/expenses", label: "Expenses", icon: <IconExpenses /> },
   { href: "/bookings", label: "Bookings", icon: <IconBookings /> },
+  { href: "/assets", label: "Assets", icon: <IconAssets /> },
 ];
 
 export default function BottomNav({ role }: { role: string }) {

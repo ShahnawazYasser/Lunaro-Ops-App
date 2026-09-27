@@ -45,6 +45,11 @@ export interface DashboardResponse {
   // qualifying payments, for the "Client events" line's subtitle.
   bookingRevenue: number;
   bookingPaymentsCount: number;
+  // Straight-line depreciation for the month (Chunk 2) — a non-cash cost,
+  // computed live from the asset_depreciation view. Only this month's slice
+  // counts, never an asset's full cost. Included in netProfit alongside
+  // totalExpenses.
+  depreciation: number;
   revenueByVenue: VenueRevenue[];
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
@@ -81,6 +86,7 @@ export async function GET(request: NextRequest) {
     { data: bookingRows, error: bookingErr },
     { data: employees, error: empErr },
     { data: overrides, error: overErr },
+    { data: depreciationRows, error: depErr },
   ] = await Promise.all([
     // Shift entries for the month
     supabaseAdmin
@@ -126,6 +132,11 @@ export async function GET(request: NextRequest) {
       .select("user_id, override_date, is_present")
       .gte("override_date", startDate)
       .lte("override_date", endDate),
+
+    // Straight-line depreciation for the month (Chunk 2) — the view's own
+    // `month` column is the first day of the month, same format as
+    // monthRange's startDate, so this is a direct equality match.
+    supabaseAdmin.from("asset_depreciation").select("amount").eq("month", startDate),
   ]);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
@@ -134,6 +145,7 @@ export async function GET(request: NextRequest) {
   if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
   if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
+  if (depErr) return NextResponse.json({ error: depErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
 
@@ -217,11 +229,14 @@ export async function GET(request: NextRequest) {
     daysPresent: emp.days.filter((d) => d.status === "present").length,
   }));
 
+  const depreciation = (depreciationRows ?? []).reduce((s, r) => s + r.amount, 0);
+
   // Every row in `expenses` is money out, whoever fronted it — so net profit
-  // is simply revenue minus the whole table for the month. (operationalExpenses
+  // is revenue minus the whole table for the month, minus this month's
+  // depreciation (a non-cash cost — see asset_depreciation). (operationalExpenses
   // and reimbursements are overlapping slices of totalExpenses, not addends;
   // never sum them.)
-  const netProfit = totalRevenue - totalExpenses;
+  const netProfit = totalRevenue - totalExpenses - depreciation;
 
   const response: DashboardResponse = {
     totalRevenue,
@@ -235,6 +250,7 @@ export async function GET(request: NextRequest) {
     wastePrints,
     bookingRevenue,
     bookingPaymentsCount,
+    depreciation,
     revenueByVenue,
     expensesByCategory,
     attendance,

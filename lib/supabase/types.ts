@@ -316,6 +316,47 @@ export interface Database {
           },
         ];
       };
+      assets: {
+        Row: {
+          id: string;
+          name: string;
+          cost: number;
+          purchase_date: string;
+          useful_life_months: number;
+          salvage_value: number;
+          venue_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          cost: number;
+          purchase_date: string;
+          useful_life_months: number;
+          salvage_value?: number;
+          venue_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          cost?: number;
+          purchase_date?: string;
+          useful_life_months?: number;
+          salvage_value?: number;
+          venue_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "assets_venue_id_fkey";
+            columns: ["venue_id"];
+            isOneToOne: false;
+            referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       attendance_overrides: {
         Row: {
           id: string;
@@ -374,7 +415,17 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      asset_depreciation: {
+        Row: {
+          asset_id: string;
+          name: string;
+          month: string;
+          amount: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       replace_entry_expenses: {
         Args: {

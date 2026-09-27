@@ -35,6 +35,7 @@ interface DashboardResponse {
   wastePrints: number;
   bookingRevenue: number;
   bookingPaymentsCount: number;
+  depreciation: number;
   revenueByVenue: VenueRevenue[];
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
@@ -162,7 +163,7 @@ export default function DashboardClient() {
               {pkr(data.netProfit)}
             </p>
             <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
-              Revenue − total expenses
+              Revenue − total expenses − depreciation
             </p>
           </section>
 
@@ -233,19 +234,31 @@ export default function DashboardClient() {
               Expenses by Category
             </p>
             <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-              {data.expensesByCategory.length === 0 ? (
+              {data.expensesByCategory.length === 0 && data.depreciation === 0 ? (
                 <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
                   No expenses logged this month
                 </div>
               ) : (
-                data.expensesByCategory.map((c, i) => (
-                  <div key={c.category}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                    <p className="text-sm font-medium">{c.category}</p>
-                    <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(c.amount)}</span>
-                  </div>
-                ))
+                <>
+                  {data.expensesByCategory.map((c, i) => (
+                    <div key={c.category}
+                      className="flex items-center justify-between px-3 py-2.5"
+                      style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
+                      <p className="text-sm font-medium">{c.category}</p>
+                      <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(c.amount)}</span>
+                    </div>
+                  ))}
+                  {data.depreciation > 0 && (
+                    <div className="flex items-center justify-between px-3 py-2.5"
+                      style={{ borderTop: data.expensesByCategory.length === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
+                      <div>
+                        <p className="text-sm font-medium italic" style={{ color: "#8A9BAD" }}>Depreciation</p>
+                        <p className="text-xs" style={{ color: "#8A9BAD" }}>Non-cash — asset cost spread over time</p>
+                      </div>
+                      <span className="text-sm font-semibold italic" style={{ color: "#8A9BAD" }}>{pkr(data.depreciation)}</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </section>
