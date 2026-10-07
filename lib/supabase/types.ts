@@ -361,6 +361,95 @@ export interface Database {
           },
         ];
       };
+      // payout_due (Chunk 4) is a plain manual date, not a generated column —
+      // Lanes' actual payout date varies from the ~10-day estimate, so it's
+      // entered by hand once known (see migration_payout_due_manual.sql).
+      payout_cycles: {
+        Row: {
+          id: string;
+          venue_id: string;
+          cycle_start: string;
+          cycle_end: string;
+          payout_due: string | null;
+          gross_amount: number | null;
+          rent_deducted: number;
+          received_on: string | null;
+          received_amount: number | null;
+        };
+        Insert: {
+          id?: string;
+          venue_id: string;
+          cycle_start: string;
+          cycle_end: string;
+          payout_due?: string | null;
+          gross_amount?: number | null;
+          rent_deducted?: number;
+          received_on?: string | null;
+          received_amount?: number | null;
+        };
+        Update: {
+          id?: string;
+          venue_id?: string;
+          cycle_start?: string;
+          cycle_end?: string;
+          payout_due?: string | null;
+          gross_amount?: number | null;
+          rent_deducted?: number;
+          received_on?: string | null;
+          received_amount?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payout_cycles_venue_id_fkey";
+            columns: ["venue_id"];
+            isOneToOne: false;
+            referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // due_day is retained by the schema but no longer drives the dashboard's
+      // rent-coverage check (Chunk 4 follow-up) — rent is deducted from
+      // whichever payout cycle it lands in (payout_cycles.rent_deducted), not
+      // on a fixed day of the month.
+      recurring_expenses: {
+        Row: {
+          id: string;
+          name: string;
+          category: string;
+          amount: number;
+          due_day: number;
+          venue_id: string | null;
+          active: boolean;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          category: string;
+          amount: number;
+          due_day: number;
+          venue_id?: string | null;
+          active?: boolean;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          category?: string;
+          amount?: number;
+          due_day?: number;
+          venue_id?: string | null;
+          active?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recurring_expenses_venue_id_fkey";
+            columns: ["venue_id"];
+            isOneToOne: false;
+            referencedRelation: "venues";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       attendance_overrides: {
         Row: {
           id: string;

@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-08-17 (Phase F). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-10-08 (finance-v2 Chunk 4). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1150,10 +1150,51 @@ as prior phases). `bookings` confirmed empty and both test months'
 
 **This closes improvement round A–F.**
 
+**Finance-v2 round (Chunks 0–4), after Phase F**
+
+- **Chunk 0a/0b:** API routes pinned to Singapore (`preferredRegion = "sin1"`),
+  `shift_entries` date index, and the dashboard's sequential queries
+  parallelized into one `Promise.all`.
+- **Chunk 1:** `migration_finance_v2.sql` (applied as `finance_v2`) —
+  assets/depreciation, `price_charged`, `payout_cycles`,
+  `recurring_expenses`, owner draws tables.
+- **Chunk 2:** `/assets` screen + straight-line depreciation on the dashboard.
+- **Chunk 3:** per-entry `price_charged`, informational only (never used
+  in revenue).
+- **Chunk 4 — Venue payouts (Lanes):**
+  - `/payouts` (owner-only) + `GET/POST /api/payouts`,
+    `PATCH /api/payouts/[id]` (edit gross, rent deducted, payout date,
+    mark received). 403 for employees.
+  - **`payout_due` is a manually entered date, never computed** — Lanes
+    pays "within ~10 days" but the real date varies. It stays null until
+    the owner knows it (`migration_payout_due_manual.sql`, applied as
+    `payout_due_manual`). Don't reintroduce a generated `cycle_end + 10`.
+  - **Rent is not due on a fixed calendar day** — it comes out of whichever
+    payout cycle it lands in (`payout_cycles.rent_deducted`).
+    `recurring_expenses.due_day` exists (not-null) but the dashboard no
+    longer uses it.
+  - **Dashboard rent-coverage warning** (`rentCoverage` in
+    `GET /api/dashboard`): an active venue-linked recurring expense is
+    "uncovered" for a month when no `payout_cycles` row for that venue has
+    a known `payout_due` inside that month.
+  - Seed data (`migration_finance_v2_data.sql`, applied as
+    `finance_v2_data_lanes_payouts`): 13 Lanes cycles of 28 days from
+    2026-09-26 through 2027-09-24, all `payout_due` null, plus one
+    "Lanes rent" recurring expense (PKR 60,000).
+  - Bottom nav gained a payouts entry.
+  - Verified against a production build and the live DB: GET returns 13
+    cycles; setting `payout_due` on the 2026-09-26 cycle cleared the October
+    rent warning, and reverting it brought the warning back; employee GET
+    → 403; `/payouts` → 200. Test edit reverted (0 of 13 `payout_due`
+    set). `tsc` and `npm run build` clean.
+
 ### In progress
-- Nothing. Phases A–F are complete, merged to `master`, and deployed —
-  confirmed 2026-09-20: `master` HEAD (`ef47db1`, "Merge branch 'develop'")
-  matches Vercel's latest READY production deployment for this project.
+- Finance-v2: Chunks 0–4 done. Chunk 4 is committed locally but **not yet
+  pushed/deployed** (as of 2026-10-08). Remaining finance-v2 pieces from the
+  Chunk 1 schema — recurring-expenses UI and owner draws — are not built.
+  Wait for an explicit prompt before starting them.
+- Phases A–F deployed — confirmed 2026-09-20: `master` HEAD (`ef47db1`)
+  matched Vercel's latest READY production deployment.
 
 ### Known issues
 - None. The Phase D schema-rename-vs-deployed-code mismatch flagged after

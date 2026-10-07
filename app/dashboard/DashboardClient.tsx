@@ -23,6 +23,12 @@ interface AttendanceSummaryRow {
   daysPresent: number;
 }
 
+interface RentCoverageItem {
+  venueName: string;
+  rentAmount: number;
+  nextPayoutDue: string | null;
+}
+
 interface DashboardResponse {
   totalRevenue: number;
   operationalExpenses: number;
@@ -40,6 +46,7 @@ interface DashboardResponse {
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
+  rentCoverage: RentCoverageItem[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -70,6 +77,12 @@ function formatMonthLabel(m: string): string {
 
 function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
+    day: "numeric", month: "short", year: "numeric",
+  });
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -166,6 +179,26 @@ export default function DashboardClient() {
               Revenue − total expenses − depreciation
             </p>
           </section>
+
+          {/* ── Rent coverage warning ───────────────────────────── */}
+          {data.rentCoverage.length > 0 && (
+            <section className="space-y-2">
+              {data.rentCoverage.map((item) => (
+                <div key={item.venueName} className="rounded-xl p-3.5"
+                  style={{ backgroundColor: "rgba(196,90,74,0.12)", border: "1px solid rgba(196,90,74,0.35)" }}>
+                  <p className="text-sm font-medium" style={{ color: "#C45A4A" }}>
+                    No {item.venueName} payout lands before rent is due this month.
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                    Rent: {pkr(item.rentAmount)}
+                    {item.nextPayoutDue
+                      ? ` · Next payout expected ${formatDate(item.nextPayoutDue)}`
+                      : " · No payout date entered yet"}
+                  </p>
+                </div>
+              ))}
+            </section>
+          )}
 
           {!hasActivity && (
             <div className="text-center py-2 text-sm" style={{ color: "#8A9BAD" }}>

@@ -26,6 +26,17 @@ export interface CategoryExpense {
   amount: number;
 }
 
+// Rent-coverage warning (Chunk 4). Rent is not due on a fixed day of the
+// month — it's deducted from whichever payout cycle it lands in (see
+// migration_payout_due_manual.sql). An item is uncovered when the active
+// recurring expense's venue has no payout_cycles row with a known
+// (manually-entered) payout_due landing in the selected month.
+export interface RentCoverageItem {
+  venueName: string;
+  rentAmount: number;
+  nextPayoutDue: string | null;
+}
+
 export interface DashboardResponse {
   totalRevenue: number;
   // Kept for the current dashboard UI: the shift-linked slice of expenses.
@@ -54,6 +65,7 @@ export interface DashboardResponse {
   expensesByCategory: CategoryExpense[];
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
+  rentCoverage: RentCoverageItem[];
 }
 
 // GET /api/dashboard?month=2026-06
@@ -87,6 +99,8 @@ export async function GET(request: NextRequest) {
     { data: employees, error: empErr },
     { data: overrides, error: overErr },
     { data: depreciationRows, error: depErr },
+    { data: recurringExpenses, error: recurErr },
+    { data: payoutCycles, error: payoutErr },
   ] = await Promise.all([
     // Shift entries for the month
     supabaseAdmin
@@ -137,6 +151,23 @@ export async function GET(request: NextRequest) {
     // `month` column is the first day of the month, same format as
     // monthRange's startDate, so this is a direct equality match.
     supabaseAdmin.from("asset_depreciation").select("amount").eq("month", startDate),
+
+    // Rent-coverage check (Chunk 4) — active recurring costs tied to a
+    // venue, and every payout cycle with a known (manually-entered)
+    // payout_due for that venue. Both queried in full (not scoped to this
+    // month) since "next payout due" needs to look forward past the
+    // selected month too.
+    supabaseAdmin
+      .from("recurring_expenses")
+      .select("name, amount, venue_id")
+      .eq("active", true)
+      .not("venue_id", "is", null),
+
+    supabaseAdmin
+      .from("payout_cycles")
+      .select("venue_id, payout_due")
+      .not("payout_due", "is", null)
+      .order("payout_due", { ascending: true }),
   ]);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
@@ -146,6 +177,8 @@ export async function GET(request: NextRequest) {
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
   if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
   if (depErr) return NextResponse.json({ error: depErr.message }, { status: 500 });
+  if (recurErr) return NextResponse.json({ error: recurErr.message }, { status: 500 });
+  if (payoutErr) return NextResponse.json({ error: payoutErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
 
@@ -170,6 +203,27 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => b.amount - a.amount);
 
   const venueNameMap = new Map((venues ?? []).map((v) => [v.id, v.name]));
+
+  // Rent coverage: for each active venue-linked recurring expense, "covered"
+  // means some payout_cycles row for that venue has a known payout_due
+  // landing inside the selected month. nextPayoutDue is the earliest known
+  // payout_due for that venue strictly after this month, for context.
+  const rentCoverage: RentCoverageItem[] = [];
+  for (const rec of recurringExpenses ?? []) {
+    if (!rec.venue_id) continue;
+    const venueCycles = (payoutCycles ?? []).filter((c) => c.venue_id === rec.venue_id);
+    const covered = venueCycles.some(
+      (c) => c.payout_due! >= startDate && c.payout_due! <= endDate
+    );
+    if (!covered) {
+      const next = venueCycles.find((c) => c.payout_due! > endDate);
+      rentCoverage.push({
+        venueName: venueNameMap.get(rec.venue_id) ?? rec.venue_id,
+        rentAmount: rec.amount,
+        nextPayoutDue: next?.payout_due ?? null,
+      });
+    }
+  }
 
   // Revenue + free/waste print totals, grouped by venue
   const venueAgg = new Map<string, { revenue: number; shiftCount: number }>();
@@ -255,6 +309,7 @@ export async function GET(request: NextRequest) {
     expensesByCategory,
     attendance,
     daysInMonth,
+    rentCoverage,
   };
 
   return NextResponse.json(response);
