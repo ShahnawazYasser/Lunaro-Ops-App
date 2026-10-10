@@ -2,6 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import Card from "@/components/Card";
+import Button from "@/components/Button";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import EmptyState from "@/components/EmptyState";
+import FormField, { MoneyField, InputStyles } from "@/components/FormField";
+import SectionLabel from "@/components/SectionLabel";
+import Toast, { type ToastState } from "@/components/Toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,8 +41,6 @@ interface FormState {
   salvageValue: string;
   venueId: string;
 }
-
-interface Toast { type: "success" | "error"; message: string }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -81,7 +87,7 @@ function remainingMonths(asset: AssetRow): number {
 export default function AssetsClient({ user, venues }: Props) {
   const [form, setForm] = useState<FormState>(blankForm);
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const [rows, setRows] = useState<AssetRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -111,7 +117,7 @@ export default function AssetsClient({ user, venues }: Props) {
     return undefined;
   })();
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -200,130 +206,57 @@ export default function AssetsClient({ user, venues }: Props) {
   );
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <span className="font-semibold" style={{ color: "#C9A84C" }}>Assets</span>
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-          Owner
-        </span>
-      </header>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Assets" />
+      <Toast toast={toast} />
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{ backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A", color: "#fff" }}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* Delete confirm */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(11,25,41,0.75)" }}>
-          <div className="w-full max-w-sm rounded-2xl p-5 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.15)" }}>
-            <p className="text-sm font-medium">Delete this asset?</p>
-            <p className="text-xs" style={{ color: "#8A9BAD" }}>
-              This can&apos;t be undone. Its remaining monthly depreciation will stop counting immediately.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-                style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-                Cancel
-              </button>
-              <button onClick={() => { void handleDelete(confirmDeleteId); }}
-                disabled={deletingId === confirmDeleteId}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ backgroundColor: "#C45A4A", color: "#fff", opacity: deletingId === confirmDeleteId ? 0.6 : 1 }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this asset?"
+          message="This can't be undone. Its remaining monthly depreciation will stop counting immediately."
+          busy={deletingId === confirmDeleteId}
+          onConfirm={() => { void handleDelete(confirmDeleteId); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
         {/* ── Add Asset Form ─────────────────────────────────── */}
         <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            Add Asset
-          </p>
-          <div className="rounded-2xl p-4 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-
-            {/* Name */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Name</label>
+          <SectionLabel>Add Asset</SectionLabel>
+          <Card className="space-y-4">
+            <FormField label="Name" error={submitAttempted ? nameError : undefined}>
               <input type="text" placeholder="e.g. Canon printer" value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="input-base w-full"
-                style={{ borderColor: submitAttempted && nameError ? "#C45A4A" : undefined }} />
-              {submitAttempted && nameError && (
-                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{nameError}</p>
-              )}
-            </div>
+                className="input-base w-full" />
+            </FormField>
 
-            {/* Cost */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Cost</label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
-                <input type="number" inputMode="decimal" placeholder="0" min="0"
-                  value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))}
-                  className="input-base flex-1"
-                  style={{ borderColor: submitAttempted && costError ? "#C45A4A" : undefined }} />
-              </div>
-              {submitAttempted && costError && (
-                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{costError}</p>
-              )}
-            </div>
+            <MoneyField label="Cost" value={form.cost}
+              onChange={(v) => setForm((f) => ({ ...f, cost: v }))}
+              error={submitAttempted ? costError : undefined} />
 
-            {/* Purchase date */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Purchase date</label>
+            <FormField label="Purchase date">
               <input type="date" value={form.purchaseDate}
                 onChange={(e) => setForm((f) => ({ ...f, purchaseDate: e.target.value }))}
                 className="input-base w-full" />
-            </div>
+            </FormField>
 
-            {/* Useful life */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Useful life (months)</label>
+            <FormField label="Useful life (months)" error={submitAttempted ? lifeError : undefined}>
               <input type="number" inputMode="numeric" placeholder="e.g. 12" min="1" step="1"
                 value={form.usefulLifeMonths}
                 onChange={(e) => setForm((f) => ({ ...f, usefulLifeMonths: e.target.value }))}
-                className="input-base w-full"
-                style={{ borderColor: submitAttempted && lifeError ? "#C45A4A" : undefined }} />
-              {submitAttempted && lifeError && (
-                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{lifeError}</p>
-              )}
-            </div>
+                className="input-base w-full" />
+            </FormField>
 
-            {/* Salvage value */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>
-                Salvage value <span className="font-normal">(optional, default 0)</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
-                <input type="number" inputMode="decimal" placeholder="0" min="0"
-                  value={form.salvageValue} onChange={(e) => setForm((f) => ({ ...f, salvageValue: e.target.value }))}
-                  className="input-base flex-1"
-                  style={{ borderColor: submitAttempted && salvageError ? "#C45A4A" : undefined }} />
-              </div>
-              {submitAttempted && salvageError && (
-                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{salvageError}</p>
-              )}
-            </div>
+            <MoneyField label={<>Salvage value <span className="font-normal">(optional, default 0)</span></>}
+              value={form.salvageValue}
+              onChange={(v) => setForm((f) => ({ ...f, salvageValue: v }))}
+              error={submitAttempted ? salvageError : undefined} />
 
-            {/* Venue */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Venue (optional)</label>
+            <FormField label="Venue (optional)">
               {venues.length === 0 ? (
-                <p className="text-sm" style={{ color: "#8A9BAD" }}>No venues configured</p>
+                <p className="text-sm text-text-muted">No venues configured</p>
               ) : (
                 <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
                   className="input-base w-full">
@@ -331,77 +264,59 @@ export default function AssetsClient({ user, venues }: Props) {
                   {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
               )}
-            </div>
+            </FormField>
 
-            {/* Submit */}
-            <button onClick={handleSubmit} disabled={submitting}
-              className="w-full py-3.5 rounded-xl text-sm font-semibold transition-opacity"
-              style={{ backgroundColor: "#C9A84C", color: "#0B1929", opacity: submitting ? 0.65 : 1 }}>
+            <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting}>
               {submitting ? "Saving…" : "Add Asset"}
-            </button>
-          </div>
+            </Button>
+          </Card>
         </section>
 
         {/* ── List ─────────────────────────────────────────────── */}
         <section className="space-y-2">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#8A9BAD" }}>
-              All Assets
-            </p>
+            <SectionLabel className="">All Assets</SectionLabel>
             {rows.length > 0 && (
-              <span className="text-xs" style={{ color: "#8A9BAD" }}>
-                {pkr(totalMonthlyDepreciation)}/mo total
-              </span>
+              <span className="text-xs text-text-muted">{pkr(totalMonthlyDepreciation)}/mo total</span>
             )}
           </div>
 
           {listLoading ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>Loading…</div>
+            <EmptyState message="Loading…" />
           ) : listError ? (
-            <div className="text-center py-8 space-y-2">
-              <p className="text-sm" style={{ color: "#C45A4A" }}>{listError}</p>
-              <button onClick={() => { void fetchList(); }}
-                className="text-sm px-4 py-1.5 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-                Try again
-              </button>
-            </div>
+            <EmptyState error message={listError} onRetry={() => { void fetchList(); }} />
           ) : rows.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>No assets logged yet</div>
+            <EmptyState message="No assets logged yet" />
           ) : (
             rows.map((asset) => {
               const remaining = remainingMonths(asset);
               const fullyDepreciated = remaining <= 0;
 
               return (
-                <div key={asset.id} className="rounded-xl p-3.5"
-                  style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+                <Card key={asset.id} size="sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium truncate" style={{ color: "#E8EFF5" }}>{asset.name}</p>
-                        {asset.venues && (
-                          <span className="text-xs" style={{ color: "#8A9BAD" }}>· {asset.venues.name}</span>
-                        )}
+                        <p className="text-sm font-medium truncate text-text">{asset.name}</p>
+                        {asset.venues && <span className="text-xs text-text-muted">· {asset.venues.name}</span>}
                       </div>
-                      <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                      <p className="text-xs mt-1 text-text-muted">
                         {pkr(asset.cost)} · bought{" "}
                         {new Date(asset.purchase_date + "T00:00:00").toLocaleDateString("en-PK", {
                           day: "numeric", month: "short", year: "numeric",
                         })}
                       </p>
-                      <p className="text-xs mt-1" style={{ color: fullyDepreciated ? "#8A9BAD" : "#C9A84C" }}>
+                      <p className={`text-xs mt-1 ${fullyDepreciated ? "text-text-muted" : "text-gold"}`}>
                         {fullyDepreciated
                           ? "Fully depreciated"
                           : `${pkr(monthlyDepreciation(asset))}/mo · ${remaining} month${remaining === 1 ? "" : "s"} left`}
                       </p>
                     </div>
-                    <button onClick={() => setConfirmDeleteId(asset.id)}
-                      className="text-xs px-2 py-1 rounded-lg shrink-0"
-                      style={{ color: "#C45A4A", border: "1px solid rgba(196,90,74,0.35)" }}>
+                    <Button variant="danger" size="xs" className="shrink-0" onClick={() => setConfirmDeleteId(asset.id)}>
                       Delete
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
               );
             })
           )}
@@ -409,23 +324,7 @@ export default function AssetsClient({ user, venues }: Props) {
       </main>
 
       <BottomNav role={user.role} />
-
-      <style>{`
-        .input-base {
-          background-color: #0B1929;
-          color: #E8EFF5;
-          border: 1px solid rgba(200,212,224,0.2);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 16px;
-          line-height: 1.4;
-          outline: none;
-        }
-        .input-base:focus { border-color: rgba(201,168,76,0.5); }
-        select.input-base option { background-color: #16293D; }
-        input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
-        input[type="date"], input[type="time"] { color-scheme: dark; }
-      `}</style>
+      <InputStyles />
     </div>
   );
 }

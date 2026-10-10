@@ -1188,6 +1188,20 @@ as prior phases). `bookings` confirmed empty and both test months'
     → 403; `/payouts` → 200. Test edit reverted (0 of 13 `payout_due`
     set). `tsc` and `npm run build` clean.
 
+**Chunk 5a — Shared UI components (structure only, no behaviour change)**
+- New in `components/`: `Button` (primary/secondary/tint/outline/danger/destructive, xs–lg),
+  `Card` (tone + size), `Badge` (pill/tag, optional button), `StatCard`, `EmptyState`
+  (also the error+retry block), `ErrorBanner`, `ConfirmDialog`, `FormField` / `MoneyField` /
+  `InputStyles` (owns `.input-base`; red border driven by `FormField error`), `Toast`,
+  `PageHeader`, `MonthSwitcher`, `SectionLabel`, `Chip`, `Sheet` (full-screen edit sheet),
+  `Spinner`, `RowList`/`Row`/`StatLine`/`DetailSection`, `cx`.
+- Dashboard, Entries, Expenses, Bookings, Assets, Payouts clients now use them
+  (3,217 → 2,276 lines). Logic, fetches and state untouched.
+- Not migrated yet: Attendance, Login, Reimburse, `BookingForm`, `ShiftEntryForm`, `BottomNav`
+  (still carry inline styles and their own `.input-base` copy).
+- Known small visual unifications: danger/muted badge tints now one value, month-switcher
+  arrows one padding, toast one position. Needs an eyeball on a real screen.
+
 ### In progress
 - Finance-v2: Chunks 0–4 done. Chunk 4 is committed locally but **not yet
   pushed/deployed** (as of 2026-10-08). Remaining finance-v2 pieces from the

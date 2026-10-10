@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
+import Chip from "@/components/Chip";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import EmptyState from "@/components/EmptyState";
+import FormField, { MoneyField, InputStyles } from "@/components/FormField";
+import SectionLabel from "@/components/SectionLabel";
+import Toast, { type ToastState } from "@/components/Toast";
 import { CATEGORIES, type Category } from "@/lib/categories";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -48,8 +58,6 @@ interface FormState {
   payerUserId: string;
   relatedUserId: string;
 }
-
-interface Toast { type: "success" | "error"; message: string }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -106,7 +114,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Filter state
   const [filterMonth, setFilterMonth] = useState(currentMonth);
@@ -135,7 +143,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -289,148 +297,77 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
   }, {});
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <span className="font-semibold" style={{ color: "#C9A84C" }}>Expenses</span>
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-          Owner
-        </span>
-      </header>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Expenses" />
+      <Toast toast={toast} />
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{ backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A", color: "#fff" }}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* Delete confirm */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(11,25,41,0.75)" }}>
-          <div className="w-full max-w-sm rounded-2xl p-5 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.15)" }}>
-            <p className="text-sm font-medium">Delete this expense?</p>
-            <p className="text-xs" style={{ color: "#8A9BAD" }}>This can't be undone.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-                style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-                Cancel
-              </button>
-              <button onClick={() => { void handleDelete(confirmDeleteId); }}
-                disabled={deletingId === confirmDeleteId}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ backgroundColor: "#C45A4A", color: "#fff", opacity: deletingId === confirmDeleteId ? 0.6 : 1 }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this expense?"
+          message="This can't be undone."
+          busy={deletingId === confirmDeleteId}
+          onConfirm={() => { void handleDelete(confirmDeleteId); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
         {/* ── Log Expense Form ─────────────────────────────────── */}
         <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            Log Expense
-          </p>
-          <div className="rounded-2xl p-4 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-
-            {/* Date */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Date</label>
+          <SectionLabel>Log Expense</SectionLabel>
+          <Card className="space-y-4">
+            <FormField label="Date">
               <input type="date" value={form.expenseDate}
                 onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
                 className="input-base w-full" />
-            </div>
+            </FormField>
 
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Category</label>
+            <FormField label="Category">
               <select value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
                 className="input-base w-full">
                 {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
               </select>
-            </div>
+            </FormField>
 
-            {/* Salary for */}
             {form.category === "Salary" && (
-              <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Salary for</label>
+              <FormField label="Salary for">
                 <select value={form.relatedUserId}
                   onChange={(e) => setForm((f) => ({ ...f, relatedUserId: e.target.value }))}
                   className="input-base w-full">
                   <option value="">— Not specific to one person —</option>
                   {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                 </select>
-              </div>
+              </FormField>
             )}
 
-            {/* Amount */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Amount</label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
-                <input type="number" inputMode="decimal" placeholder="0" min="0"
-                  value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                  className="input-base flex-1"
-                  style={{ borderColor: submitAttempted && amountError ? "#C45A4A" : undefined }} />
-              </div>
-              {submitAttempted && amountError && (
-                <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{amountError}</p>
-              )}
-            </div>
+            <MoneyField label="Amount" value={form.amount}
+              onChange={(v) => setForm((f) => ({ ...f, amount: v }))}
+              error={submitAttempted ? amountError : undefined} />
 
-            {/* Who paid */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Who paid?</label>
+            <FormField label="Who paid?" error={submitAttempted ? payerError : undefined}>
               <div className="flex gap-2">
-                <button onClick={() => setForm((f) => ({ ...f, paidBy: "company" }))}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
-                  style={{
-                    backgroundColor: form.paidBy === "company" ? "rgba(201,168,76,0.15)" : "#0B1929",
-                    color: form.paidBy === "company" ? "#C9A84C" : "#8A9BAD",
-                    border: form.paidBy === "company" ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.15)",
-                  }}>
+                <Chip size="md" active={form.paidBy === "company"} onClick={() => setForm((f) => ({ ...f, paidBy: "company" }))}>
                   Company paid
-                </button>
-                <button onClick={() => setForm((f) => ({ ...f, paidBy: "employee" }))}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
-                  style={{
-                    backgroundColor: form.paidBy === "employee" ? "rgba(201,168,76,0.15)" : "#0B1929",
-                    color: form.paidBy === "employee" ? "#C9A84C" : "#8A9BAD",
-                    border: form.paidBy === "employee" ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.15)",
-                  }}>
+                </Chip>
+                <Chip size="md" active={form.paidBy === "employee"} onClick={() => setForm((f) => ({ ...f, paidBy: "employee" }))}>
                   Staff member paid
-                </button>
+                </Chip>
               </div>
               {form.paidBy === "employee" && (
-                <>
-                  <select value={form.payerUserId}
-                    onChange={(e) => setForm((f) => ({ ...f, payerUserId: e.target.value }))}
-                    className="input-base w-full mt-2"
-                    style={{ borderColor: submitAttempted && payerError ? "#C45A4A" : undefined }}>
-                    <option value="">— Who? —</option>
-                    {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                  </select>
-                  {submitAttempted && payerError && (
-                    <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{payerError}</p>
-                  )}
-                </>
+                <select value={form.payerUserId}
+                  onChange={(e) => setForm((f) => ({ ...f, payerUserId: e.target.value }))}
+                  className="input-base w-full mt-2">
+                  <option value="">— Who? —</option>
+                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                </select>
               )}
-            </div>
+            </FormField>
 
-            {/* Venue */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Venue (optional)</label>
+            <FormField label="Venue (optional)">
               {venues.length === 0 ? (
-                <p className="text-sm" style={{ color: "#8A9BAD" }}>No venues configured</p>
+                <p className="text-sm text-text-muted">No venues configured</p>
               ) : (
                 <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
                   className="input-base w-full">
@@ -438,119 +375,76 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
                   {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
               )}
-            </div>
+            </FormField>
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>Description</label>
+            <FormField label="Description">
               <input type="text" placeholder="e.g. August rent" value={form.note}
                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                 className="input-base w-full" />
-            </div>
+            </FormField>
 
-            {/* Receipt upload */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>
-                Receipt photo{" "}
-                <span className="font-normal" style={{ color: "#8A9BAD" }}>(optional)</span>
-              </label>
+            <FormField label={<>Receipt photo <span className="font-normal">(optional)</span></>}>
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf"
                 onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium cursor-pointer"
-                style={{
-                  color: "#8A9BAD",
-                  backgroundColor: "#0B1929",
-                  border: "1px solid rgba(200,212,224,0.2)",
-                  borderRadius: "10px",
-                  padding: "8px 12px",
-                }} />
-              {receiptFile && (
-                <p className="text-xs mt-1" style={{ color: "#C9A84C" }}>
-                  {receiptFile.name}
-                </p>
-              )}
-            </div>
+                className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium cursor-pointer text-text-muted bg-bg border border-[rgba(200,212,224,0.2)] rounded-[10px] px-3 py-2" />
+              {receiptFile && <p className="text-xs mt-1 text-gold">{receiptFile.name}</p>}
+            </FormField>
 
-            {/* Submit */}
-            <button onClick={handleSubmit} disabled={submitting || uploading}
-              className="w-full py-3.5 rounded-xl text-sm font-semibold transition-opacity"
-              style={{ backgroundColor: "#C9A84C", color: "#0B1929", opacity: submitting ? 0.65 : 1 }}>
+            <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting || uploading}>
               {uploading ? "Uploading receipt…" : submitting ? "Saving…" : "Log Expense"}
-            </button>
-          </div>
+            </Button>
+          </Card>
         </section>
 
         {/* ── Filters + Totals ─────────────────────────────────── */}
         <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            All Expenses
-          </p>
-          <div className="rounded-2xl p-4 space-y-3"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-
-            {/* Month switcher */}
+          <SectionLabel>All Expenses</SectionLabel>
+          <Card className="space-y-3">
             <div className="flex items-center justify-between">
-              <button onClick={() => setFilterMonth(prevMonth)}
-                className="px-3 py-1.5 rounded-lg text-sm" style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-                ←
-              </button>
-              <span className="text-sm font-medium" style={{ color: "#E8EFF5" }}>
-                {formatMonth(filterMonth)}
-              </span>
-              <button onClick={() => setFilterMonth(nextMonth)}
-                className="px-3 py-1.5 rounded-lg text-sm" style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-                →
-              </button>
+              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth(prevMonth)} aria-label="Previous month">←</Button>
+              <span className="text-sm font-medium">{formatMonth(filterMonth)}</span>
+              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth(nextMonth)} aria-label="Next month">→</Button>
             </div>
 
-            {/* Paid-by filter */}
             <div className="flex gap-2 flex-wrap">
-              <FilterChip label="All" active={filterPaidBy === "all"} onClick={() => setFilterPaidBy("all")} />
-              <FilterChip label="Company" active={filterPaidBy === "company"} onClick={() => setFilterPaidBy("company")} />
-              <FilterChip label="Staff" active={filterPaidBy === "employee"} onClick={() => setFilterPaidBy("employee")} />
+              <Chip active={filterPaidBy === "all"} onClick={() => setFilterPaidBy("all")}>All</Chip>
+              <Chip active={filterPaidBy === "company"} onClick={() => setFilterPaidBy("company")}>Company</Chip>
+              <Chip active={filterPaidBy === "employee"} onClick={() => setFilterPaidBy("employee")}>Staff</Chip>
             </div>
 
-            {/* Category filter */}
             <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
               className="input-base w-full">
               <option value="all">All categories</option>
               {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
             </select>
 
-            {/* Totals */}
-            <div className="space-y-1.5 pt-1" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
+            <div className="space-y-1.5 pt-1 border-t border-border/70">
               <div>
-                <span className="text-xs" style={{ color: "#8A9BAD" }}>Total this month: </span>
-                <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(totalExpenses)}</span>
+                <span className="text-xs text-text-muted">Total this month: </span>
+                <span className="text-sm font-semibold text-text">{pkr(totalExpenses)}</span>
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {employees.map((emp) => (
                   <div key={emp.id}>
-                    <span className="text-xs" style={{ color: "#8A9BAD" }}>Owes {emp.name}: </span>
-                    <span className="text-xs font-semibold" style={{ color: (owedByEmployee[emp.id] ?? 0) > 0 ? "#C9A84C" : "#8A9BAD" }}>
+                    <span className="text-xs text-text-muted">Owes {emp.name}: </span>
+                    <span className={`text-xs font-semibold ${(owedByEmployee[emp.id] ?? 0) > 0 ? "text-gold" : "text-text-muted"}`}>
                       {pkr(owedByEmployee[emp.id] ?? 0)}
                     </span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          </Card>
         </section>
 
         {/* ── List ─────────────────────────────────────────────── */}
         <section className="space-y-2">
           {listLoading ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>Loading…</div>
+            <EmptyState message="Loading…" />
           ) : listError ? (
-            <div className="text-center py-8 space-y-2">
-              <p className="text-sm" style={{ color: "#C45A4A" }}>{listError}</p>
-              <button onClick={() => { void fetchList(); }}
-                className="text-sm px-4 py-1.5 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-                Try again
-              </button>
-            </div>
+            <EmptyState error message={listError} onRetry={() => { void fetchList(); }} />
           ) : visibleRows.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>No expenses for this period</div>
+            <EmptyState message="No expenses for this period" />
           ) : (
             visibleRows.map((row) => {
               const isStaffPaid = row.paid_by === "employee";
@@ -559,71 +453,53 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
               const isToggling = pendingToggle.has(row.id);
 
               return (
-                <div key={row.id} className="rounded-xl p-3.5"
-                  style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+                <Card key={row.id} size="sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-                          {row.category}
-                        </span>
-                        {row.related && (
-                          <span className="text-xs" style={{ color: "#8A9BAD" }}>for {row.related.name}</span>
-                        )}
-                        {row.venues && (
-                          <span className="text-xs" style={{ color: "#8A9BAD" }}>· {row.venues.name}</span>
-                        )}
+                        <Badge>{row.category}</Badge>
+                        {row.related && <span className="text-xs text-text-muted">for {row.related.name}</span>}
+                        {row.venues && <span className="text-xs text-text-muted">· {row.venues.name}</span>}
                         {isStaffPaid && (
-                          <button onClick={() => { if (!isToggling) void toggleStatus(row); }}
+                          <Badge
+                            tone={isPaid ? "gold" : "danger"}
                             disabled={isToggling}
-                            className="text-xs px-2 py-0.5 rounded-full font-medium"
-                            style={{
-                              backgroundColor: isPaid ? "rgba(201,168,76,0.15)" : "rgba(196,90,74,0.15)",
-                              color: isPaid ? "#C9A84C" : "#C45A4A",
-                              opacity: isToggling ? 0.6 : 1,
-                            }}>
+                            onClick={() => { if (!isToggling) void toggleStatus(row); }}
+                          >
                             {isPaid ? "Paid back" : `Owes ${row.payer?.name ?? "employee"}`}
-                          </button>
+                          </Badge>
                         )}
                       </div>
-                      {row.description && (
-                        <p className="text-sm mt-1 truncate" style={{ color: "#E8EFF5" }}>{row.description}</p>
-                      )}
-                      <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                      {row.description && <p className="text-sm mt-1 truncate text-text">{row.description}</p>}
+                      <p className="text-xs mt-1 text-text-muted">
                         {new Date(row.expense_date + "T00:00:00").toLocaleDateString("en-PK", {
                           day: "numeric", month: "short",
                         })}
                         {row.receipt_url && (
                           <>
                             {" · "}
-                            <a href={row.receipt_url} target="_blank" rel="noopener noreferrer"
-                              style={{ color: "#C9A84C" }}>
+                            <a href={row.receipt_url} target="_blank" rel="noopener noreferrer" className="text-gold">
                               Receipt ↗
                             </a>
                           </>
                         )}
                       </p>
                       {isShiftLinked && (
-                        <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                        <p className="text-xs mt-1 text-text-muted">
                           From {row.logger?.name ?? "an employee"}&apos;s shift entry — edit the entry instead
                         </p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>
-                        {pkr(row.amount)}
-                      </span>
+                      <span className="text-sm font-semibold text-text">{pkr(row.amount)}</span>
                       {!isShiftLinked && (
-                        <button onClick={() => setConfirmDeleteId(row.id)}
-                          className="text-xs px-2 py-1 rounded-lg"
-                          style={{ color: "#C45A4A", border: "1px solid rgba(196,90,74,0.35)" }}>
+                        <Button variant="danger" size="xs" onClick={() => setConfirmDeleteId(row.id)}>
                           Delete
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
-                </div>
+                </Card>
               );
             })
           )}
@@ -631,36 +507,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
       </main>
 
       <BottomNav role={user.role} />
-
-      <style>{`
-        .input-base {
-          background-color: #0B1929;
-          color: #E8EFF5;
-          border: 1px solid rgba(200,212,224,0.2);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 16px;
-          line-height: 1.4;
-          outline: none;
-        }
-        .input-base:focus { border-color: rgba(201,168,76,0.5); }
-        select.input-base option { background-color: #16293D; }
-        input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
-        input[type="date"], input[type="time"] { color-scheme: dark; }
-      `}</style>
+      <InputStyles />
     </div>
-  );
-}
-
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
-      style={{
-        backgroundColor: active ? "rgba(201,168,76,0.15)" : "#0B1929",
-        color: active ? "#C9A84C" : "#8A9BAD",
-        border: active ? "1px solid rgba(201,168,76,0.4)" : "1px solid rgba(200,212,224,0.12)",
-      }}>
-      {label}
-    </button>
   );
 }

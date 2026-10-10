@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import MonthSwitcher from "@/components/MonthSwitcher";
+import ErrorBanner from "@/components/ErrorBanner";
+import Spinner from "@/components/Spinner";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
+import Sheet from "@/components/Sheet";
+import Toast, { type ToastState } from "@/components/Toast";
+import EmptyState from "@/components/EmptyState";
+import { StatLine, DetailSection } from "@/components/RowList";
 import ShiftEntryForm, {
   type ShiftEntryFormValues,
   type ShiftEntryPayload,
@@ -12,11 +23,6 @@ import ShiftEntryForm, {
 
 interface Props {
   venues: Venue[];
-}
-
-interface Toast {
-  type: "success" | "error";
-  message: string;
 }
 
 interface EntryRow {
@@ -144,9 +150,9 @@ export default function EntriesClient({ venues }: Props) {
   const [pendingCollect, setPendingCollect] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<EntryRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -244,105 +250,34 @@ export default function EntriesClient({ venues }: Props) {
   };
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{
-            backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A",
-            color: "#fff",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <Toast toast={toast} />
 
-      {/* Edit sheet */}
       {editing && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: "#0B1929" }}>
-          <header
-            className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-3"
-            style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}
-          >
-            <button
-              onClick={() => setEditing(null)}
-              className="text-sm px-3 py-1.5 rounded-lg shrink-0"
-              style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}
-            >
-              Cancel
-            </button>
-            <div className="min-w-0 text-right">
-              <p className="text-sm font-semibold truncate" style={{ color: "#C9A84C" }}>
-                Edit entry
-              </p>
-              <p className="text-xs truncate" style={{ color: "#8A9BAD" }}>
-                {editing.users.name} · {formatDate(editing.entry_date)}
-              </p>
-            </div>
-          </header>
-
-          <main className="max-w-lg mx-auto px-4 py-5 pb-16">
-            <ShiftEntryForm
-              venues={venues}
-              initialValues={rowToFormValues(editing)}
-              submitLabel="Save changes"
-              submitting={saving}
-              dateReadOnly
-              onSubmit={(payload) => saveEdit(editing, payload)}
-              onError={(msg) => showToast("error", msg)}
-            />
-          </main>
-        </div>
+        <Sheet title="Edit entry" subtitle={`${editing.users.name} · ${formatDate(editing.entry_date)}`} onClose={() => setEditing(null)}>
+          <ShiftEntryForm
+            venues={venues}
+            initialValues={rowToFormValues(editing)}
+            submitLabel="Save changes"
+            submitting={saving}
+            dateReadOnly
+            onSubmit={(payload) => saveEdit(editing, payload)}
+            onError={(msg) => showToast("error", msg)}
+          />
+        </Sheet>
       )}
 
-      {/* Header */}
-      <header className="sticky top-0 z-20 px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-semibold" style={{ color: "#C9A84C" }}>Entries</span>
-          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-            Owner
-          </span>
-        </div>
+      <PageHeader title="Entries">
+        <MonthSwitcher label={formatMonthLabel(month)} onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+      </PageHeader>
 
-        {/* Month switcher */}
-        <div className="flex items-center justify-between">
-          <button onClick={() => setMonth(prevMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            ←
-          </button>
-          <span className="text-sm font-medium">{formatMonthLabel(month)}</span>
-          <button onClick={() => setMonth(nextMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            →
-          </button>
-        </div>
-      </header>
-
-      {/* Error */}
-      {error && (
-        <div className="mx-4 mt-4 p-3 rounded-xl text-sm flex items-center justify-between gap-3" style={{ backgroundColor: "rgba(196,90,74,0.15)", color: "#C45A4A", border: "1px solid rgba(196,90,74,0.3)" }}>
-          <span>{error}</span>
-          <button onClick={() => { void fetchEntries(month); }}
-            className="shrink-0 text-xs px-3 py-1 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-            Try again
-          </button>
-        </div>
-      )}
+      {error && <ErrorBanner message={error} onRetry={() => { void fetchEntries(month); }} />}
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-2">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 rounded-full border-2 animate-spin"
-              style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
-          </div>
+          <Spinner />
         ) : rows.length === 0 ? (
-          <div className="text-center py-16 text-sm" style={{ color: "#8A9BAD" }}>
-            No shift entries for this month
-          </div>
+          <EmptyState message="No shift entries for this month" tall />
         ) : (
           rows.map((row) => {
             const amountReceived = row.cash_received + row.bank_received;
@@ -359,15 +294,10 @@ export default function EntriesClient({ venues }: Props) {
             const difference = amountReceived - expected;
 
             return (
-              <div
+              <Card
                 key={row.id}
-                className="rounded-xl overflow-hidden"
-                style={{
-                  backgroundColor: "#16293D",
-                  border: row.cash_collected
-                    ? "1px solid rgba(201,168,76,0.4)"
-                    : "1px solid rgba(200,212,224,0.10)",
-                }}
+                size="sm"
+                className={`p-0! overflow-hidden ${row.cash_collected ? "border-gold/40!" : ""}`}
               >
                 <div
                   role="button"
@@ -392,96 +322,70 @@ export default function EntriesClient({ venues }: Props) {
                         }}
                         disabled={isPending}
                         aria-label={row.cash_collected ? "Mark as not collected" : "Mark as collected"}
-                        className="mt-0.5 shrink-0 w-9 h-9 -m-1.5 flex items-center justify-center rounded-lg"
-                        style={{ opacity: isPending ? 0.5 : 1 }}
+                        className="mt-0.5 shrink-0 w-9 h-9 -m-1.5 flex items-center justify-center rounded-lg disabled:opacity-50"
                       >
                         <span
-                          className="w-5 h-5 rounded-md flex items-center justify-center"
-                          style={{
-                            backgroundColor: row.cash_collected ? "#C9A84C" : "transparent",
-                            border: row.cash_collected
-                              ? "1px solid #C9A84C"
-                              : "1px solid rgba(200,212,224,0.3)",
-                          }}
+                          className={`w-5 h-5 rounded-md flex items-center justify-center border ${
+                            row.cash_collected ? "bg-gold border-gold" : "bg-transparent border-[rgba(200,212,224,0.3)]"
+                          }`}
                         >
-                          {row.cash_collected && (
-                            <span style={{ color: "#0B1929", fontSize: "13px", lineHeight: 1 }}>✓</span>
-                          )}
+                          {row.cash_collected && <span className="text-bg text-[13px] leading-none">✓</span>}
                         </span>
                       </button>
 
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{row.users.name}</p>
-                        <p className="text-xs" style={{ color: "#8A9BAD" }}>
+                        <p className="text-xs text-text-muted">
                           {venueLabel(row)} · {formatDate(row.entry_date)}
                         </p>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {row.cash_collected && (
-                            <span
-                              className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                              style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
-                            >
-                              Collected
-                            </span>
-                          )}
-                          {row.last_edited_by && (
-                            <span
-                              className="inline-block mt-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
-                              style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.45)" }}
-                            >
-                              Edited
-                            </span>
-                          )}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {row.cash_collected && <Badge shape="tag">Collected</Badge>}
+                          {row.last_edited_by && <Badge shape="tag" tone="outline">Edited</Badge>}
                         </div>
                       </div>
                     </div>
-                    <span className="text-sm font-semibold shrink-0" style={{ color: net >= 0 ? "#4AC47A" : "#C45A4A" }}>
+                    <span className={`text-sm font-semibold shrink-0 ${net >= 0 ? "text-success" : "text-danger"}`}>
                       {pkr(net)}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-                    <EntryStat label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
-                    <EntryStat label="Amount received" value={pkr(amountReceived)} />
-                    <EntryStat label="Total prints" value={`${row.total_prints}`} />
-                    <EntryStat label="Free prints" value={`${row.free_prints}`} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2 border-t border-border/70">
+                    <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
+                    <StatLine label="Amount received" value={pkr(amountReceived)} />
+                    <StatLine label="Total prints" value={`${row.total_prints}`} />
+                    <StatLine label="Free prints" value={`${row.free_prints}`} />
                   </div>
                 </div>
 
                 {expanded && (
-                  <div
-                    className="px-3.5 pb-3.5 pt-3 space-y-4"
-                    style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}
-                  >
+                  <div className="px-3.5 pb-3.5 pt-3 space-y-4 border-t border-border/70">
                     <DetailSection title="Shift">
-                      <EntryStat label="Clock in" value={row.clock_in?.slice(0, 5) ?? "—"} />
-                      <EntryStat label="Clock out" value={row.clock_out?.slice(0, 5) ?? "—"} />
-                      <EntryStat label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
+                      <StatLine label="Clock in" value={row.clock_in?.slice(0, 5) ?? "—"} />
+                      <StatLine label="Clock out" value={row.clock_out?.slice(0, 5) ?? "—"} />
+                      <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
                     </DetailSection>
 
                     <DetailSection title="Prints">
-                      <EntryStat label="Total (× PKR 500)" value={`${row.total_prints} · ${pkr(row.total_prints * 500)}`} />
-                      <EntryStat label="Extra (× PKR 250)" value={`${row.extra_prints} · ${pkr(row.extra_prints * 250)}`} />
-                      <EntryStat label="System @500" value={`${row.system_prints_500} · ${pkr(row.system_prints_500 * 500)}`} />
-                      <EntryStat label="System @250" value={`${row.system_prints_250} · ${pkr(row.system_prints_250 * 250)}`} />
-                      <EntryStat label="Free prints" value={`${row.free_prints}`} />
-                      <EntryStat label="Waste prints" value={`${row.waste_prints}`} />
-                      <div className="pt-1.5 flex items-center justify-between" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-                        <span className="text-xs" style={{ color: "#8A9BAD" }}>Should have collected</span>
-                        <span className="text-xs font-semibold" style={{ color: "#C9A84C" }}>{pkr(expected)}</span>
+                      <StatLine label="Total (× PKR 500)" value={`${row.total_prints} · ${pkr(row.total_prints * 500)}`} />
+                      <StatLine label="Extra (× PKR 250)" value={`${row.extra_prints} · ${pkr(row.extra_prints * 250)}`} />
+                      <StatLine label="System @500" value={`${row.system_prints_500} · ${pkr(row.system_prints_500 * 500)}`} />
+                      <StatLine label="System @250" value={`${row.system_prints_250} · ${pkr(row.system_prints_250 * 250)}`} />
+                      <StatLine label="Free prints" value={`${row.free_prints}`} />
+                      <StatLine label="Waste prints" value={`${row.waste_prints}`} />
+                      <div className="pt-1.5 flex items-center justify-between border-t border-border/70">
+                        <span className="text-xs text-text-muted">Should have collected</span>
+                        <span className="text-xs font-semibold text-gold">{pkr(expected)}</span>
                       </div>
                     </DetailSection>
 
                     <DetailSection title="Money">
-                      {row.price_charged !== null && (
-                        <EntryStat label="Price offered" value={pkr(row.price_charged)} />
-                      )}
-                      <EntryStat label="Cash received" value={pkr(row.cash_received)} />
-                      <EntryStat label="Bank received" value={pkr(row.bank_received)} />
-                      <EntryStat label="Total received" value={pkr(amountReceived)} />
-                      <div className="pt-1.5 flex items-center justify-between" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-                        <span className="text-xs" style={{ color: "#8A9BAD" }}>Difference vs expected</span>
-                        <span className="text-xs font-semibold" style={{ color: difference >= 0 ? "#4AC47A" : "#C45A4A" }}>
+                      {row.price_charged !== null && <StatLine label="Price offered" value={pkr(row.price_charged)} />}
+                      <StatLine label="Cash received" value={pkr(row.cash_received)} />
+                      <StatLine label="Bank received" value={pkr(row.bank_received)} />
+                      <StatLine label="Total received" value={pkr(amountReceived)} />
+                      <div className="pt-1.5 flex items-center justify-between border-t border-border/70">
+                        <span className="text-xs text-text-muted">Difference vs expected</span>
+                        <span className={`text-xs font-semibold ${difference >= 0 ? "text-success" : "text-danger"}`}>
                           {difference >= 0 ? "+" : ""}{pkr(difference)}
                         </span>
                       </div>
@@ -490,63 +394,39 @@ export default function EntriesClient({ venues }: Props) {
                     {row.entry_expenses.length > 0 && (
                       <DetailSection title="Expenses">
                         {row.entry_expenses.map((exp, i) => (
-                          <EntryStat key={i} label={exp.description} value={pkr(exp.amount)} />
+                          <StatLine key={i} label={exp.description} value={pkr(exp.amount)} />
                         ))}
-                        <div className="pt-1.5 flex items-center justify-between" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-                          <span className="text-xs" style={{ color: "#8A9BAD" }}>Net (received − expenses)</span>
-                          <span className="text-xs font-semibold" style={{ color: net >= 0 ? "#4AC47A" : "#C45A4A" }}>{pkr(net)}</span>
+                        <div className="pt-1.5 flex items-center justify-between border-t border-border/70">
+                          <span className="text-xs text-text-muted">Net (received − expenses)</span>
+                          <span className={`text-xs font-semibold ${net >= 0 ? "text-success" : "text-danger"}`}>{pkr(net)}</span>
                         </div>
                       </DetailSection>
                     )}
 
                     {row.notes && (
                       <DetailSection title="Notes">
-                        <p className="text-xs" style={{ color: "#E8EFF5" }}>{row.notes}</p>
+                        <p className="text-xs text-text">{row.notes}</p>
                       </DetailSection>
                     )}
 
                     {row.last_edited_at && (
-                      <p className="text-xs" style={{ color: "#8A9BAD" }}>
+                      <p className="text-xs text-text-muted">
                         Edited by the owner on {formatEditedAt(row.last_edited_at)}
                       </p>
                     )}
 
-                    <button
-                      onClick={() => setEditing(row)}
-                      className="w-full py-3 rounded-xl text-sm font-semibold"
-                      style={{ backgroundColor: "#C9A84C", color: "#0B1929" }}
-                    >
+                    <Button size="lg" className="w-full" onClick={() => setEditing(row)}>
                       Edit
-                    </button>
+                    </Button>
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })
         )}
       </main>
 
       <BottomNav role="owner" />
-    </div>
-  );
-}
-
-function EntryStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs" style={{ color: "#8A9BAD" }}>{label}</span>
-      <span className="text-xs font-medium" style={{ color: "#E8EFF5" }}>{value}</span>
-    </div>
-  );
-}
-
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "#8A9BAD" }}>
-        {title}
-      </p>
-      <div className="space-y-1">{children}</div>
     </div>
   );
 }

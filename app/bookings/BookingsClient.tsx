@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import Card from "@/components/Card";
+import Badge, { type BadgeTone } from "@/components/Badge";
+import Button from "@/components/Button";
+import Chip from "@/components/Chip";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import EmptyState from "@/components/EmptyState";
+import SectionLabel from "@/components/SectionLabel";
+import Sheet from "@/components/Sheet";
+import Spinner from "@/components/Spinner";
+import Toast, { type ToastState } from "@/components/Toast";
 import BookingForm, {
   blankBookingValues,
   type BookingFormValues,
@@ -25,11 +36,6 @@ interface BookingRow {
   final_date: string | null;
   status: BookingStatus;
   balance_due: number;
-}
-
-interface Toast {
-  type: "success" | "error";
-  message: string;
 }
 
 type ListFilter = "upcoming" | "past";
@@ -75,10 +81,10 @@ function payloadToApiBody(payload: BookingPayload) {
   };
 }
 
-const STATUS_COLORS: Record<BookingStatus, { bg: string; text: string }> = {
-  upcoming: { bg: "rgba(201,168,76,0.15)", text: "#C9A84C" },
-  completed: { bg: "rgba(74,196,122,0.15)", text: "#4AC47A" },
-  cancelled: { bg: "rgba(138,155,173,0.15)", text: "#8A9BAD" },
+const STATUS_TONES: Record<BookingStatus, BadgeTone> = {
+  upcoming: "gold",
+  completed: "success",
+  cancelled: "muted",
 };
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -95,9 +101,9 @@ export default function BookingsClient({ user }: { user: { id: string; name: str
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -223,83 +229,38 @@ export default function BookingsClient({ user }: { user: { id: string; name: str
   };
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <span className="font-semibold" style={{ color: "#C9A84C" }}>Bookings</span>
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-          Owner
-        </span>
-      </header>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Bookings" />
+      <Toast toast={toast} />
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{ backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A", color: "#fff" }}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* Delete confirm */}
       {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ backgroundColor: "rgba(11,25,41,0.75)" }}>
-          <div className="w-full max-w-sm rounded-2xl p-5 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.15)" }}>
-            <p className="text-sm font-medium">Delete this booking?</p>
-            <p className="text-xs" style={{ color: "#8A9BAD" }}>This can't be undone.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
-                style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-                Cancel
-              </button>
-              <button onClick={() => { void handleDelete(confirmDeleteId); }}
-                disabled={deletingId === confirmDeleteId}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ backgroundColor: "#C45A4A", color: "#fff", opacity: deletingId === confirmDeleteId ? 0.6 : 1 }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this booking?"
+          message="This can't be undone."
+          busy={deletingId === confirmDeleteId}
+          onConfirm={() => { void handleDelete(confirmDeleteId); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
 
-      {/* Edit sheet */}
       {editing && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: "#0B1929" }}>
-          <header className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-3"
-            style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-            <button onClick={() => setEditing(null)}
-              className="text-sm px-3 py-1.5 rounded-lg shrink-0"
-              style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-              Cancel
-            </button>
-            <div className="min-w-0 text-right">
-              <p className="text-sm font-semibold truncate" style={{ color: "#C9A84C" }}>Edit booking</p>
-              <p className="text-xs truncate" style={{ color: "#8A9BAD" }}>{editing.client_name}</p>
-            </div>
-          </header>
-          <main className="max-w-lg mx-auto px-4 py-5 pb-16">
-            <BookingForm
-              initialValues={rowToFormValues(editing)}
-              submitLabel="Save changes"
-              submitting={saving}
-              showFinalPayment
-              onSubmit={(payload) => handleSaveEdit(editing, payload)}
-              onError={(msg) => showToast("error", msg)}
-            />
-          </main>
-        </div>
+        <Sheet title="Edit booking" subtitle={editing.client_name} onClose={() => setEditing(null)}>
+          <BookingForm
+            initialValues={rowToFormValues(editing)}
+            submitLabel="Save changes"
+            submitting={saving}
+            showFinalPayment
+            onSubmit={(payload) => handleSaveEdit(editing, payload)}
+            onError={(msg) => showToast("error", msg)}
+          />
+        </Sheet>
       )}
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
         {/* ── New booking form ─────────────────────────────────── */}
         <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            New Booking
-          </p>
+          <SectionLabel>New Booking</SectionLabel>
           <BookingForm
             key={formKey}
             initialValues={blankBookingValues()}
@@ -314,92 +275,60 @@ export default function BookingsClient({ user }: { user: { id: string; name: str
         {/* ── List ─────────────────────────────────────────────── */}
         <section className="space-y-3">
           <div className="flex gap-2">
-            <ToggleChip label="Upcoming" active={filter === "upcoming"} onClick={() => setFilter("upcoming")} />
-            <ToggleChip label="Past" active={filter === "past"} onClick={() => setFilter("past")} />
+            <Chip size="md" active={filter === "upcoming"} onClick={() => setFilter("upcoming")}>Upcoming</Chip>
+            <Chip size="md" active={filter === "past"} onClick={() => setFilter("past")}>Past</Chip>
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 rounded-full border-2 animate-spin"
-                style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
-            </div>
+            <Spinner />
           ) : error ? (
-            <div className="text-center py-8 space-y-2">
-              <p className="text-sm" style={{ color: "#C45A4A" }}>{error}</p>
-              <button onClick={() => { void fetchList(filter); }}
-                className="text-sm px-4 py-1.5 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-                Try again
-              </button>
-            </div>
+            <EmptyState error message={error} onRetry={() => { void fetchList(filter); }} />
           ) : rows.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>
-              No {filter} bookings
-            </div>
+            <EmptyState message={`No ${filter} bookings`} />
           ) : (
             rows.map((row) => {
               const received = (row.advance_amount ?? 0) + (row.final_amount ?? 0);
               const cancelled = row.status === "cancelled";
-              const statusColor = STATUS_COLORS[row.status];
 
               return (
-                <div key={row.id} className="rounded-2xl p-4 space-y-3"
-                  style={{
-                    backgroundColor: "#16293D",
-                    border: "1px solid rgba(200,212,224,0.10)",
-                    opacity: cancelled ? 0.6 : 1,
-                  }}>
+                <Card key={row.id} className="space-y-3" dim={cancelled}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold" style={{ color: "#C9A84C" }}>
-                        {formatDate(row.event_date)}
-                      </p>
+                      <p className="text-sm font-semibold text-gold">{formatDate(row.event_date)}</p>
                       <p className="text-sm font-medium mt-0.5 truncate">
                         {row.client_name}
-                        {row.event_name && <span style={{ color: "#8A9BAD" }}> · {row.event_name}</span>}
+                        {row.event_name && <span className="text-text-muted"> · {row.event_name}</span>}
                       </p>
-                      {row.package && (
-                        <p className="text-xs mt-0.5 truncate" style={{ color: "#8A9BAD" }}>{row.package}</p>
-                      )}
+                      {row.package && <p className="text-xs mt-0.5 truncate text-text-muted">{row.package}</p>}
                     </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-                      style={{ backgroundColor: statusColor.bg, color: statusColor.text }}>
-                      {row.status}
-                    </span>
+                    <Badge tone={STATUS_TONES[row.status]}>{row.status}</Badge>
                   </div>
 
-                  <p className="text-sm" style={{ color: "#E8EFF5" }}>
+                  <p className="text-sm text-text">
                     {pkr(row.amount_charged)} · received {pkr(received)} ·{" "}
                     {row.balance_due > 0 ? (
-                      <span style={{ color: "#C9A84C", fontWeight: 600 }}>due {pkr(row.balance_due)}</span>
+                      <span className="text-gold font-semibold">due {pkr(row.balance_due)}</span>
                     ) : (
-                      <span style={{ color: "#4AC47A", fontWeight: 600 }}>Fully paid</span>
+                      <span className="text-success font-semibold">Fully paid</span>
                     )}
                   </p>
 
-                  {row.notes && (
-                    <p className="text-xs" style={{ color: "#8A9BAD" }}>{row.notes}</p>
-                  )}
+                  {row.notes && <p className="text-xs text-text-muted">{row.notes}</p>}
 
-                  <div className="flex gap-2 pt-1" style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}>
-                    <button onClick={() => setEditing(row)}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold mt-2"
-                      style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
+                  <div className="flex gap-2 pt-1 border-t border-border/70">
+                    <Button variant="tint" size="sm" className="flex-1 mt-2" onClick={() => setEditing(row)}>
                       Edit
-                    </button>
+                    </Button>
                     {!cancelled && (
-                      <button onClick={() => { void handleCancel(row); }}
-                        className="flex-1 py-2 rounded-lg text-xs font-medium mt-2"
-                        style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
+                      <Button variant="secondary" size="sm" className="flex-1 mt-2" onClick={() => { void handleCancel(row); }}>
                         Cancel
-                      </button>
+                      </Button>
                     )}
-                    <button onClick={() => setConfirmDeleteId(row.id)}
-                      className="flex-1 py-2 rounded-lg text-xs font-medium mt-2"
-                      style={{ color: "#C45A4A", border: "1px solid rgba(196,90,74,0.35)" }}>
+                    <Button variant="danger" size="sm" className="flex-1 mt-2" onClick={() => setConfirmDeleteId(row.id)}>
                       Delete
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
               );
             })
           )}
@@ -408,18 +337,5 @@ export default function BookingsClient({ user }: { user: { id: string; name: str
 
       <BottomNav role={user.role} />
     </div>
-  );
-}
-
-function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="flex-1 py-2 rounded-xl text-sm font-medium transition-all"
-      style={{
-        backgroundColor: active ? "rgba(201,168,76,0.15)" : "#16293D",
-        color: active ? "#C9A84C" : "#8A9BAD",
-        border: active ? "1px solid rgba(201,168,76,0.5)" : "1px solid rgba(200,212,224,0.10)",
-      }}>
-      {label}
-    </button>
   );
 }

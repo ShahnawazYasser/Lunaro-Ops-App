@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
+import EmptyState from "@/components/EmptyState";
+import FormField, { MoneyField, InputStyles } from "@/components/FormField";
+import SectionLabel from "@/components/SectionLabel";
+import Sheet from "@/components/Sheet";
+import Toast, { type ToastState } from "@/components/Toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -42,8 +51,6 @@ interface EditForm {
   receivedOn: string;
   receivedAmount: string;
 }
-
-interface Toast { type: "success" | "error"; message: string }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -88,7 +95,7 @@ function rowToEditForm(row: PayoutCycleRow): EditForm {
 export default function PayoutsClient({ user, venues }: Props) {
   const [form, setForm] = useState<NewCycleForm>(() => blankNewCycleForm(venues));
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const [rows, setRows] = useState<PayoutCycleRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -100,7 +107,7 @@ export default function PayoutsClient({ user, venues }: Props) {
 
   const today = localToday();
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -218,197 +225,147 @@ export default function PayoutsClient({ user, venues }: Props) {
   };
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <span className="font-semibold" style={{ color: "#C9A84C" }}>Payouts</span>
-        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-          Owner
-        </span>
-      </header>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Payouts" />
+      <Toast toast={toast} />
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{ backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A", color: "#fff" }}>
-          {toast.message}
-        </div>
-      )}
-
-      {/* Edit sheet */}
       {editingId && editForm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ backgroundColor: "#0B1929" }}>
-          <header className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-3"
-            style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-            <button onClick={() => { setEditingId(null); setEditForm(null); }}
-              className="text-sm px-3 py-1.5 rounded-lg shrink-0"
-              style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-              Cancel
-            </button>
-            <p className="text-sm font-semibold" style={{ color: "#C9A84C" }}>Edit cycle</p>
-          </header>
-          <main className="max-w-lg mx-auto px-4 py-5 pb-16 space-y-5">
-            <Section title="Payout Details">
-              <MoneyField label="Gross amount (optional)" value={editForm.grossAmount}
-                onChange={(v) => setEditForm((f) => f && { ...f, grossAmount: v })} />
-              <MoneyField label="Rent deducted" value={editForm.rentDeducted}
-                onChange={(v) => setEditForm((f) => f && { ...f, rentDeducted: v })} />
-              <Field label="Payout date (once known)">
-                <input type="date" value={editForm.payoutDue}
-                  onChange={(e) => setEditForm((f) => f && { ...f, payoutDue: e.target.value })}
-                  className="input-base w-full" />
-              </Field>
-            </Section>
+        <Sheet title="Edit cycle" onClose={() => { setEditingId(null); setEditForm(null); }}>
+          <div className="space-y-5">
+            <section>
+              <SectionLabel>Payout Details</SectionLabel>
+              <Card className="space-y-4">
+                <MoneyField label="Gross amount (optional)" value={editForm.grossAmount}
+                  onChange={(v) => setEditForm((f) => f && { ...f, grossAmount: v })} />
+                <MoneyField label="Rent deducted" value={editForm.rentDeducted}
+                  onChange={(v) => setEditForm((f) => f && { ...f, rentDeducted: v })} />
+                <FormField label="Payout date (once known)">
+                  <input type="date" value={editForm.payoutDue}
+                    onChange={(e) => setEditForm((f) => f && { ...f, payoutDue: e.target.value })}
+                    className="input-base w-full" />
+                </FormField>
+              </Card>
+            </section>
 
-            <Section title="Mark Received">
-              <p className="text-xs" style={{ color: "#8A9BAD" }}>
-                Leave both blank if this cycle's payout hasn&apos;t landed yet.
-              </p>
-              <Field label="Date received">
-                <input type="date" value={editForm.receivedOn}
-                  onChange={(e) => setEditForm((f) => f && { ...f, receivedOn: e.target.value })}
-                  className="input-base w-full" />
-              </Field>
-              <MoneyField label="Amount received" value={editForm.receivedAmount}
-                onChange={(v) => setEditForm((f) => f && { ...f, receivedAmount: v })} />
-            </Section>
+            <section>
+              <SectionLabel>Mark Received</SectionLabel>
+              <Card className="space-y-4">
+                <p className="text-xs text-text-muted">
+                  Leave both blank if this cycle&apos;s payout hasn&apos;t landed yet.
+                </p>
+                <FormField label="Date received">
+                  <input type="date" value={editForm.receivedOn}
+                    onChange={(e) => setEditForm((f) => f && { ...f, receivedOn: e.target.value })}
+                    className="input-base w-full" />
+                </FormField>
+                <MoneyField label="Amount received" value={editForm.receivedAmount}
+                  onChange={(v) => setEditForm((f) => f && { ...f, receivedAmount: v })} />
+              </Card>
+            </section>
 
-            <button onClick={() => { void handleSaveEdit(); }} disabled={saving}
-              className="w-full py-4 rounded-2xl text-base font-semibold transition-opacity"
-              style={{ backgroundColor: "#C9A84C", color: "#0B1929", opacity: saving ? 0.65 : 1 }}>
+            <Button size="lg" className="w-full" onClick={() => { void handleSaveEdit(); }} disabled={saving}>
               {saving ? "Saving…" : "Save changes"}
-            </button>
-          </main>
-        </div>
+            </Button>
+          </div>
+        </Sheet>
       )}
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
         {/* ── Add cycle form ───────────────────────────────────── */}
         <section>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-            Add Cycle
-          </p>
-          <div className="rounded-2xl p-4 space-y-4"
-            style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-            <Field label="Venue">
+          <SectionLabel>Add Cycle</SectionLabel>
+          <Card className="space-y-4">
+            <FormField label="Venue">
               {venues.length === 0 ? (
-                <p className="text-sm" style={{ color: "#8A9BAD" }}>No venues configured</p>
+                <p className="text-sm text-text-muted">No venues configured</p>
               ) : (
                 <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
                   className="input-base w-full">
                   {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
               )}
-            </Field>
+            </FormField>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Cycle start">
+              <FormField label="Cycle start">
                 <input type="date" value={form.cycleStart}
                   onChange={(e) => setForm((f) => ({ ...f, cycleStart: e.target.value }))}
                   className="input-base w-full" />
-              </Field>
-              <Field label="Cycle end">
+              </FormField>
+              <FormField label="Cycle end">
                 <input type="date" value={form.cycleEnd}
                   onChange={(e) => setForm((f) => ({ ...f, cycleEnd: e.target.value }))}
                   className="input-base w-full" />
-              </Field>
+              </FormField>
             </div>
             <MoneyField label="Gross amount (optional)" value={form.grossAmount}
               onChange={(v) => setForm((f) => ({ ...f, grossAmount: v }))} />
             <MoneyField label="Rent deducted (optional, default 0)" value={form.rentDeducted}
               onChange={(v) => setForm((f) => ({ ...f, rentDeducted: v }))} />
-            <Field label="Payout date (optional, once known)">
+            <FormField label="Payout date (optional, once known)">
               <input type="date" value={form.payoutDue}
                 onChange={(e) => setForm((f) => ({ ...f, payoutDue: e.target.value }))}
                 className="input-base w-full" />
-            </Field>
-            <button onClick={() => { void handleCreate(); }} disabled={submitting}
-              className="w-full py-3.5 rounded-xl text-sm font-semibold transition-opacity"
-              style={{ backgroundColor: "#C9A84C", color: "#0B1929", opacity: submitting ? 0.65 : 1 }}>
+            </FormField>
+            <Button size="lg" className="w-full" onClick={() => { void handleCreate(); }} disabled={submitting}>
               {submitting ? "Adding…" : "Add Cycle"}
-            </button>
-          </div>
+            </Button>
+          </Card>
         </section>
 
         {/* ── List ─────────────────────────────────────────────── */}
         <section className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#8A9BAD" }}>
-            All Cycles
-          </p>
+          <SectionLabel className="">All Cycles</SectionLabel>
 
           {listLoading ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>Loading…</div>
+            <EmptyState message="Loading…" />
           ) : listError ? (
-            <div className="text-center py-8 space-y-2">
-              <p className="text-sm" style={{ color: "#C45A4A" }}>{listError}</p>
-              <button onClick={() => { void fetchList(); }}
-                className="text-sm px-4 py-1.5 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-                Try again
-              </button>
-            </div>
+            <EmptyState error message={listError} onRetry={() => { void fetchList(); }} />
           ) : rows.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: "#8A9BAD" }}>No payout cycles logged yet</div>
+            <EmptyState message="No payout cycles logged yet" />
           ) : (
             rows.map((row) => {
               const received = row.received_on != null;
               const overdue = !received && row.payout_due != null && row.payout_due < today;
 
               return (
-                <div key={row.id} className="rounded-2xl p-4 space-y-3"
-                  style={{
-                    backgroundColor: "#16293D",
-                    border: overdue ? "1px solid rgba(196,90,74,0.5)" : "1px solid rgba(200,212,224,0.10)",
-                  }}>
+                <Card key={row.id} className={`space-y-3 ${overdue ? "border-danger/50!" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: "#C9A84C" }}>
-                        {row.venues?.name ?? row.venue_id}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: "#8A9BAD" }}>
+                      <p className="text-sm font-semibold truncate text-gold">{row.venues?.name ?? row.venue_id}</p>
+                      <p className="text-xs mt-0.5 text-text-muted">
                         {formatDate(row.cycle_start)} – {formatDate(row.cycle_end)}
                       </p>
                     </div>
                     {received ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-                        style={{ backgroundColor: "rgba(74,196,122,0.15)", color: "#4AC47A" }}>
-                        Received
-                      </span>
+                      <Badge tone="success">Received</Badge>
                     ) : overdue ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-                        style={{ backgroundColor: "rgba(196,90,74,0.18)", color: "#C45A4A" }}>
-                        Overdue
-                      </span>
+                      <Badge tone="danger">Overdue</Badge>
                     ) : (
-                      <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0"
-                        style={{ backgroundColor: "rgba(200,212,224,0.10)", color: "#8A9BAD" }}>
-                        Awaiting
-                      </span>
+                      <Badge tone="muted">Awaiting</Badge>
                     )}
                   </div>
 
-                  <div className="text-sm space-y-1" style={{ color: "#E8EFF5" }}>
+                  <div className="text-sm space-y-1 text-text">
                     <p>
                       Payout date:{" "}
-                      <span style={{ color: overdue ? "#C45A4A" : "#E8EFF5", fontWeight: overdue ? 600 : 400 }}>
+                      <span className={overdue ? "text-danger font-semibold" : "text-text"}>
                         {row.payout_due ? formatDate(row.payout_due) : "Not set yet"}
                       </span>
                     </p>
                     {row.gross_amount != null && <p>Gross: {pkr(row.gross_amount)}</p>}
                     {row.rent_deducted > 0 && <p>Rent deducted: {pkr(row.rent_deducted)}</p>}
                     {received && (
-                      <p style={{ color: "#4AC47A" }}>
+                      <p className="text-success">
                         Received {pkr(row.received_amount ?? 0)} on {formatDate(row.received_on as string)}
                       </p>
                     )}
                   </div>
 
-                  <button onClick={() => openEdit(row)}
-                    className="w-full py-2 rounded-lg text-xs font-semibold"
-                    style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
+                  <Button variant="tint" size="sm" className="w-full" onClick={() => openEdit(row)}>
                     Edit
-                  </button>
-                </div>
+                  </Button>
+                </Card>
               );
             })
           )}
@@ -416,59 +373,7 @@ export default function PayoutsClient({ user, venues }: Props) {
       </main>
 
       <BottomNav role={user.role} />
-
-      <style>{`
-        .input-base {
-          background-color: #0B1929;
-          color: #E8EFF5;
-          border: 1px solid rgba(200,212,224,0.2);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 16px;
-          line-height: 1.4;
-          outline: none;
-          transition: border-color 0.15s;
-        }
-        .input-base:focus { border-color: rgba(201,168,76,0.5); }
-        select.input-base option { background-color: #16293D; }
-        input[type="date"] { color-scheme: dark; }
-      `}</style>
+      <InputStyles />
     </div>
-  );
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-        {title}
-      </p>
-      <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-        {children}
-      </div>
-    </section>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function MoneyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
-        <input type="number" inputMode="decimal" placeholder="0" min="0" value={value}
-          onChange={(e) => onChange(e.target.value)} className="input-base flex-1" />
-      </div>
-    </Field>
   );
 }

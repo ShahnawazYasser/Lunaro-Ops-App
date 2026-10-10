@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import MonthSwitcher from "@/components/MonthSwitcher";
+import ErrorBanner from "@/components/ErrorBanner";
+import Spinner from "@/components/Spinner";
+import Card from "@/components/Card";
+import StatCard from "@/components/StatCard";
+import EmptyState from "@/components/EmptyState";
+import SectionLabel from "@/components/SectionLabel";
+import { RowList, Row } from "@/components/RowList";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -117,234 +126,136 @@ export default function DashboardClient() {
   const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.bookingRevenue > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-semibold" style={{ color: "#C9A84C" }}>Dashboard</span>
-          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-            Owner
-          </span>
-        </div>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Dashboard">
+        <MonthSwitcher label={formatMonthLabel(month)} onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+      </PageHeader>
 
-        {/* Month switcher */}
-        <div className="flex items-center justify-between">
-          <button onClick={() => setMonth(prevMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            ←
-          </button>
-          <span className="text-sm font-medium">{formatMonthLabel(month)}</span>
-          <button onClick={() => setMonth(nextMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            →
-          </button>
-        </div>
-      </header>
+      {error && <ErrorBanner message={error} onRetry={() => { void fetchDashboard(month); }} />}
 
-      {/* Error */}
-      {error && (
-        <div className="mx-4 mt-4 p-3 rounded-xl text-sm flex items-center justify-between gap-3" style={{ backgroundColor: "rgba(196,90,74,0.15)", color: "#C45A4A", border: "1px solid rgba(196,90,74,0.3)" }}>
-          <span>{error}</span>
-          <button onClick={() => { void fetchDashboard(month); }}
-            className="shrink-0 text-xs px-3 py-1 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-            Try again
-          </button>
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 rounded-full border-2 animate-spin"
-            style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
-        </div>
-      )}
+      {loading && <Spinner />}
 
       {!loading && data && (
         <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
           {/* ── Net Profit ───────────────────────────────────────── */}
-          <section className="rounded-2xl p-5 text-center"
-            style={{ backgroundColor: "rgba(201,168,76,0.10)", border: "1px solid rgba(201,168,76,0.3)" }}>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: "#C9A84C" }}>
-              Net Profit
-            </p>
-            <p className="text-3xl font-semibold" style={{ color: data.netProfit >= 0 ? "#C9A84C" : "#C45A4A" }}>
+          <Card tone="gold" className="p-5 text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-gold">Net Profit</p>
+            <p className={`text-3xl font-semibold ${data.netProfit >= 0 ? "text-gold" : "text-danger"}`}>
               {pkr(data.netProfit)}
             </p>
-            <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
-              Revenue − total expenses − depreciation
-            </p>
-          </section>
+            <p className="text-xs mt-1 text-text-muted">Revenue − total expenses − depreciation</p>
+          </Card>
 
           {/* ── Rent coverage warning ───────────────────────────── */}
           {data.rentCoverage.length > 0 && (
             <section className="space-y-2">
               {data.rentCoverage.map((item) => (
-                <div key={item.venueName} className="rounded-xl p-3.5"
-                  style={{ backgroundColor: "rgba(196,90,74,0.12)", border: "1px solid rgba(196,90,74,0.35)" }}>
-                  <p className="text-sm font-medium" style={{ color: "#C45A4A" }}>
+                <Card key={item.venueName} tone="danger" size="sm">
+                  <p className="text-sm font-medium text-danger">
                     No {item.venueName} payout lands before rent is due this month.
                   </p>
-                  <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+                  <p className="text-xs mt-1 text-text-muted">
                     Rent: {pkr(item.rentAmount)}
                     {item.nextPayoutDue
                       ? ` · Next payout expected ${formatDate(item.nextPayoutDue)}`
                       : " · No payout date entered yet"}
                   </p>
-                </div>
+                </Card>
               ))}
             </section>
           )}
 
           {!hasActivity && (
-            <div className="text-center py-2 text-sm" style={{ color: "#8A9BAD" }}>
-              No shift entries logged this month
-            </div>
+            <div className="text-center py-2 text-sm text-text-muted">No shift entries logged this month</div>
           )}
 
           {/* ── Stat cards ───────────────────────────────────────── */}
           <section className="grid grid-cols-2 gap-3">
             <StatCard label="Total Revenue" value={pkr(data.totalRevenue)} />
             <StatCard label="Total Expenses" value={pkr(data.totalExpenses)} />
-            <StatCard
-              label="Owed to Staff"
-              value={pkr(data.owedToEmployees)}
-              accent={data.owedToEmployees > 0}
-            />
+            <StatCard label="Owed to Staff" value={pkr(data.owedToEmployees)} accent={data.owedToEmployees > 0} />
             <StatCard label="Free Prints Given" value={`${data.freePrintsCount}`} sub={pkr(data.freePrintsCost)} />
             <StatCard label="Waste Prints" value={`${data.wastePrints}`} />
           </section>
 
           {/* ── Revenue by venue ─────────────────────────────────── */}
           <section>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-              Revenue by Venue
-            </p>
-            <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-              {data.revenueByVenue.length === 0 && data.bookingRevenue === 0 ? (
-                <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
-                  No shifts logged this month
-                </div>
-              ) : (
-                <>
-                  {data.revenueByVenue.map((v, i) => (
-                    <div key={v.venueId}
-                      className="flex items-center justify-between px-3 py-2.5"
-                      style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                      <div>
-                        <p className="text-sm font-medium">{v.venueName}</p>
-                        <p className="text-xs" style={{ color: "#8A9BAD" }}>
-                          {v.shiftCount} {v.shiftCount === 1 ? "shift" : "shifts"}
-                        </p>
-                      </div>
-                      <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(v.revenue)}</span>
-                    </div>
-                  ))}
-                  {data.bookingRevenue > 0 && (
-                    <div className="flex items-center justify-between px-3 py-2.5"
-                      style={{ borderTop: data.revenueByVenue.length === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                      <div>
-                        <p className="text-sm font-medium">Client events</p>
-                        <p className="text-xs" style={{ color: "#8A9BAD" }}>
-                          {data.bookingPaymentsCount} {data.bookingPaymentsCount === 1 ? "payment" : "payments"} received
-                        </p>
-                      </div>
-                      <span className="text-sm font-semibold" style={{ color: "#C9A84C" }}>{pkr(data.bookingRevenue)}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <SectionLabel>Revenue by Venue</SectionLabel>
+            {data.revenueByVenue.length === 0 && data.bookingRevenue === 0 ? (
+              <Card size="list"><EmptyState message="No shifts logged this month" /></Card>
+            ) : (
+              <RowList>
+                {data.revenueByVenue.map((v) => (
+                  <Row
+                    key={v.venueId}
+                    title={v.venueName}
+                    subtitle={`${v.shiftCount} ${v.shiftCount === 1 ? "shift" : "shifts"}`}
+                    value={pkr(v.revenue)}
+                  />
+                ))}
+                {data.bookingRevenue > 0 && (
+                  <Row
+                    title="Client events"
+                    subtitle={`${data.bookingPaymentsCount} ${data.bookingPaymentsCount === 1 ? "payment" : "payments"} received`}
+                    value={pkr(data.bookingRevenue)}
+                  />
+                )}
+              </RowList>
+            )}
           </section>
 
           {/* ── Expenses by category ─────────────────────────────── */}
           <section>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-              Expenses by Category
-            </p>
-            <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-              {data.expensesByCategory.length === 0 && data.depreciation === 0 ? (
-                <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
-                  No expenses logged this month
-                </div>
-              ) : (
-                <>
-                  {data.expensesByCategory.map((c, i) => (
-                    <div key={c.category}
-                      className="flex items-center justify-between px-3 py-2.5"
-                      style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                      <p className="text-sm font-medium">{c.category}</p>
-                      <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{pkr(c.amount)}</span>
-                    </div>
-                  ))}
-                  {data.depreciation > 0 && (
-                    <div className="flex items-center justify-between px-3 py-2.5"
-                      style={{ borderTop: data.expensesByCategory.length === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                      <div>
-                        <p className="text-sm font-medium italic" style={{ color: "#8A9BAD" }}>Depreciation</p>
-                        <p className="text-xs" style={{ color: "#8A9BAD" }}>Non-cash — asset cost spread over time</p>
-                      </div>
-                      <span className="text-sm font-semibold italic" style={{ color: "#8A9BAD" }}>{pkr(data.depreciation)}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <SectionLabel>Expenses by Category</SectionLabel>
+            {data.expensesByCategory.length === 0 && data.depreciation === 0 ? (
+              <Card size="list"><EmptyState message="No expenses logged this month" /></Card>
+            ) : (
+              <RowList>
+                {data.expensesByCategory.map((c) => (
+                  <Row key={c.category} title={c.category} value={pkr(c.amount)} tone="text" />
+                ))}
+                {data.depreciation > 0 && (
+                  <Row
+                    title="Depreciation"
+                    subtitle="Non-cash — asset cost spread over time"
+                    value={pkr(data.depreciation)}
+                    tone="muted"
+                    italic
+                  />
+                )}
+              </RowList>
+            )}
           </section>
 
           {/* ── Attendance summary ───────────────────────────────── */}
           <section>
-            <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-              Attendance Summary
-            </p>
-            <div className="rounded-2xl p-2" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-              {data.attendance.length === 0 ? (
-                <div className="text-center py-6 text-sm" style={{ color: "#8A9BAD" }}>
-                  No employees found
-                </div>
-              ) : (
-                data.attendance.map((emp, i) => (
-                  <div key={emp.id}
-                    className="flex items-center justify-between px-3 py-2.5"
-                    style={{ borderTop: i === 0 ? "none" : "1px solid rgba(200,212,224,0.08)" }}>
-                    <p className="text-sm font-medium">{emp.name}</p>
-                    <span className="text-sm" style={{ color: "#8A9BAD" }}>
-                      <span className="font-semibold" style={{ color: "#C9A84C" }}>{emp.daysPresent}</span>
-                      {" "}/ {data.daysInMonth} days
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+            <SectionLabel>Attendance Summary</SectionLabel>
+            {data.attendance.length === 0 ? (
+              <Card size="list"><EmptyState message="No employees found" /></Card>
+            ) : (
+              <RowList>
+                {data.attendance.map((emp) => (
+                  <Row
+                    key={emp.id}
+                    title={emp.name}
+                    tone="muted"
+                    value={
+                      <span className="font-normal">
+                        <span className="font-semibold text-gold">{emp.daysPresent}</span> / {data.daysInMonth} days
+                      </span>
+                    }
+                  />
+                ))}
+              </RowList>
+            )}
           </section>
         </main>
       )}
 
-      {!loading && !data && !error && (
-        <div className="text-center py-16 text-sm" style={{ color: "#8A9BAD" }}>
-          No data
-        </div>
-      )}
+      {!loading && !data && !error && <EmptyState message="No data" tall />}
 
       <BottomNav role="owner" />
-    </div>
-  );
-}
-
-function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
-  return (
-    <div className="rounded-2xl p-3.5"
-      style={{
-        backgroundColor: accent ? "rgba(201,168,76,0.10)" : "#16293D",
-        border: accent ? "1px solid rgba(201,168,76,0.3)" : "1px solid rgba(200,212,224,0.10)",
-      }}>
-      <p className="text-xs" style={{ color: "#8A9BAD" }}>{label}</p>
-      <p className="text-lg font-semibold mt-0.5" style={{ color: accent ? "#C9A84C" : "#E8EFF5" }}>{value}</p>
-      {sub && <p className="text-xs mt-0.5" style={{ color: "#C9A84C" }}>{sub}</p>}
     </div>
   );
 }
