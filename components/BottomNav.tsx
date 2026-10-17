@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
+import { cx } from "./cx";
 
 interface NavItem {
   href: string;
@@ -137,21 +138,17 @@ export default function BottomNav({ role }: { role: string }) {
   }, [handleLogout]);
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-30 flex safe-area-pb"
-      style={{
-        backgroundColor: "#16293D",
-        borderTop: "1px solid rgba(200,212,224,0.12)",
-      }}
-    >
+    <nav className="fixed bottom-0 left-0 right-0 z-30 flex safe-area-pb bg-surface border-t border-border">
       {items.map((item) => {
         const active = pathname === item.href;
         return (
           <Link
             key={item.href}
             href={item.href}
-            className="flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors min-w-0"
-            style={{ color: active ? "#C9A84C" : "#8A9BAD" }}
+            className={cx(
+              "flex-1 flex flex-col items-center justify-center py-3 gap-1 text-[10px] font-medium transition-colors min-w-0",
+              active ? "text-gold" : "text-text-muted",
+            )}
           >
             {item.icon}
             <span className="truncate max-w-full px-0.5">{item.label}</span>
@@ -161,8 +158,7 @@ export default function BottomNav({ role }: { role: string }) {
       <button
         onClick={() => { void handleLogout(); }}
         aria-label="Sign out"
-        className="shrink-0 flex flex-col items-center justify-center py-3 px-3.5 gap-1 text-[10px] font-medium transition-colors"
-        style={{ color: "#8A9BAD", borderLeft: "1px solid rgba(200,212,224,0.12)" }}
+        className="shrink-0 flex flex-col items-center justify-center py-3 px-3.5 gap-1 text-[10px] font-medium transition-colors text-text-muted border-l border-border"
       >
         <IconLogout />
       </button>

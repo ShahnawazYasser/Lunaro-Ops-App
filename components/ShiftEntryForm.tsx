@@ -1,6 +1,10 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import Button from "./Button";
+import Card from "./Card";
+import FormField, { MoneyField, InputStyles } from "./FormField";
+import SectionLabel from "./SectionLabel";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -281,7 +285,7 @@ export default function ShiftEntryForm({
       {/* ── Shift Details ───────────────────────────────────── */}
       <Section title="Shift Details">
         {/* Date */}
-        <Field label="Date">
+        <FormField label="Date">
           <div className="min-w-0 overflow-hidden">
             <input
               type="date"
@@ -295,15 +299,15 @@ export default function ShiftEntryForm({
             />
           </div>
           {dateReadOnly && (
-            <p className="text-xs mt-1" style={{ color: "#8A9BAD" }}>
+            <p className="text-xs mt-1 text-text-muted">
               The date can&apos;t be changed here
             </p>
           )}
-        </Field>
+        </FormField>
 
         {/* Clock in / out */}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Clock In">
+          <FormField label="Clock In">
             <div className="min-w-0 overflow-hidden">
               <input
                 type="time"
@@ -313,8 +317,8 @@ export default function ShiftEntryForm({
                 className="input-base w-full"
               />
             </div>
-          </Field>
-          <Field label="Clock Out">
+          </FormField>
+          <FormField label="Clock Out">
             <div className="min-w-0 overflow-hidden">
               <input
                 type="time"
@@ -324,19 +328,19 @@ export default function ShiftEntryForm({
                 className="input-base w-full"
               />
             </div>
-          </Field>
+          </FormField>
         </div>
 
         {worked && (
-          <p className="text-sm" style={{ color: "#C9A84C" }}>
+          <p className="text-sm text-gold">
             Hours worked: <span className="font-semibold">{worked}</span>
           </p>
         )}
 
         {/* Venue */}
-        <Field label="Venue">
+        <FormField label="Venue">
           {venues.length === 0 ? (
-            <p className="text-sm" style={{ color: "#C45A4A" }}>
+            <p className="text-sm text-danger">
               No venues configured — contact the owner
             </p>
           ) : (
@@ -354,11 +358,11 @@ export default function ShiftEntryForm({
               ))}
             </select>
           )}
-        </Field>
+        </FormField>
 
         {/* Event name (only when venue = event) */}
         {form.venueId === "event" && (
-          <Field label="Event Name">
+          <FormField label="Event Name">
             <input
               type="text"
               placeholder="e.g. Ayan's Wedding"
@@ -367,7 +371,7 @@ export default function ShiftEntryForm({
               onChange={(e) => setField("eventName", e.target.value)}
               className="input-base w-full"
             />
-          </Field>
+          </FormField>
         )}
       </Section>
 
@@ -425,33 +429,18 @@ export default function ShiftEntryForm({
 
       {/* ── Pricing ───────────────────────────────────────────── */}
       <Section title="Pricing">
-        <p className="text-xs mb-1" style={{ color: "#8A9BAD" }}>
+        <p className="text-xs mb-1 text-text-muted">
           Optional — what price you were offering today, for reporting only.
           This doesn&apos;t affect money collected below.
         </p>
-        <Field label="Price offered today">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium shrink-0" style={{ color: "#8A9BAD" }}>
-              PKR
-            </span>
-            <input
-              type="number"
-              inputMode="decimal"
-              placeholder="e.g. 300"
-              min="0"
-              value={form.priceCharged}
-              disabled={disabled}
-              onChange={(e) => setField("priceCharged", e.target.value)}
-              className="input-base flex-1"
-              style={{
-                borderColor: submitAttempted && fieldErrors.priceCharged ? "#C45A4A" : undefined,
-              }}
-            />
-          </div>
-          {submitAttempted && fieldErrors.priceCharged && (
-            <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{fieldErrors.priceCharged}</p>
-          )}
-        </Field>
+        <MoneyField
+          label="Price offered today"
+          placeholder="e.g. 300"
+          value={form.priceCharged}
+          disabled={disabled}
+          onChange={(v) => setField("priceCharged", v)}
+          error={submitAttempted ? fieldErrors.priceCharged : undefined}
+        />
       </Section>
 
       {/* ── Money Collected ──────────────────────────────────── */}
@@ -474,7 +463,7 @@ export default function ShiftEntryForm({
 
       {/* ── Operational Expenses ─────────────────────────────── */}
       <Section title="Operational Expenses">
-        <p className="text-xs mb-3" style={{ color: "#8A9BAD" }}>
+        <p className="text-xs mb-3 text-text-muted">
           Day-of costs — fuel, food, supplies. These come out of the day&apos;s
           money collected, not personal reimbursements.
         </p>
@@ -491,7 +480,7 @@ export default function ShiftEntryForm({
                 className="input-base w-full"
               />
               <div className="flex items-center gap-2">
-                <span className="text-sm shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
+                <span className="text-sm shrink-0 text-text-muted">PKR</span>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -504,17 +493,13 @@ export default function ShiftEntryForm({
                 />
               </div>
               {submitAttempted && expenseErrors[i] && (
-                <p className="text-xs" style={{ color: "#C45A4A" }}>{expenseErrors[i]}</p>
+                <p className="text-xs text-danger">{expenseErrors[i]}</p>
               )}
             </div>
             {!disabled && form.expenses.length > 1 && (
               <button
                 onClick={() => removeExpense(i)}
-                className="mt-1 w-9 h-9 flex items-center justify-center rounded-lg text-xl shrink-0"
-                style={{
-                  color: "#C45A4A",
-                  backgroundColor: "rgba(196,90,74,0.10)",
-                }}
+                className="mt-1 w-9 h-9 flex items-center justify-center rounded-lg text-xl shrink-0 text-danger bg-danger/10"
               >
                 ×
               </button>
@@ -525,12 +510,7 @@ export default function ShiftEntryForm({
         {!disabled && (
           <button
             onClick={addExpense}
-            className="w-full py-3 rounded-xl text-sm font-medium mt-1"
-            style={{
-              color: "#C9A84C",
-              border: "1px dashed rgba(201,168,76,0.35)",
-              backgroundColor: "transparent",
-            }}
+            className="w-full py-3 rounded-xl text-sm font-medium mt-1 text-gold border border-dashed border-gold/35"
           >
             + Add expense
           </button>
@@ -547,17 +527,13 @@ export default function ShiftEntryForm({
             value={pkr(summary.net)}
           />
         )}
-        <div
-          className="pt-3 mt-1"
-          style={{ borderTop: "1px solid rgba(200,212,224,0.12)" }}
-        >
+        <div className="pt-3 mt-1 border-t border-border">
           <div className="flex items-center justify-between">
-            <span className="text-sm" style={{ color: "#8A9BAD" }}>
+            <span className="text-sm text-text-muted">
               Difference (received vs expected)
             </span>
             <span
-              className="text-base font-semibold"
-              style={{ color: summary.difference >= 0 ? "#4AC47A" : "#C45A4A" }}
+              className={`text-base font-semibold ${summary.difference >= 0 ? "text-success" : "text-danger"}`}
             >
               {summary.difference >= 0 ? "+" : ""}
               {pkr(summary.difference)}
@@ -568,43 +544,16 @@ export default function ShiftEntryForm({
 
       {/* ── Submit ──────────────────────────────────────────── */}
       {!disabled && (
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={submitting}
-          className="w-full py-4 rounded-2xl text-base font-semibold transition-opacity"
-          style={{
-            backgroundColor: "#C9A84C",
-            color: "#0B1929",
-            opacity: submitting ? 0.65 : 1,
-          }}
+          className="w-full py-4! rounded-2xl! text-base!"
         >
           {submitting ? submittingLabel : submitLabel}
-        </button>
+        </Button>
       )}
 
-      {/* ── Scoped styles ────────────────────────────────────────── */}
-      <style>{`
-        .input-base {
-          background-color: #0B1929;
-          color: #E8EFF5;
-          border: 1px solid rgba(200,212,224,0.2);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 16px;
-          line-height: 1.4;
-          outline: none;
-          transition: border-color 0.15s;
-        }
-        .input-base:focus {
-          border-color: rgba(201,168,76,0.5);
-        }
-        .input-base:disabled {
-          opacity: 0.6;
-        }
-        select.input-base option {
-          background-color: #16293D;
-        }
-      `}</style>
+      <InputStyles />
     </div>
   );
 }
@@ -614,45 +563,16 @@ export default function ShiftEntryForm({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <p
-        className="text-xs font-semibold uppercase tracking-widest mb-2"
-        style={{ color: "#8A9BAD" }}
-      >
-        {title}
-      </p>
-      <div
-        className="rounded-2xl p-4 space-y-4"
-        style={{
-          backgroundColor: "#16293D",
-          border: "1px solid rgba(200,212,224,0.10)",
-        }}
-      >
-        {children}
-      </div>
+      <SectionLabel>{title}</SectionLabel>
+      <Card className="space-y-4">{children}</Card>
     </section>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>
-        {label}
-      </label>
-      {children}
-    </div>
   );
 }
 
 function Divider({ label }: { label: string }) {
   return (
-    <div
-      className="pt-1 pb-0.5"
-      style={{ borderTop: "1px solid rgba(200,212,224,0.08)" }}
-    >
-      <p className="text-xs" style={{ color: "#8A9BAD" }}>
-        {label}
-      </p>
+    <div className="pt-1 pb-0.5 border-t border-[rgba(200,212,224,0.08)]">
+      <p className="text-xs text-text-muted">{label}</p>
     </div>
   );
 }
@@ -673,17 +593,11 @@ function NumField({
   disabled?: boolean;
 }) {
   return (
-    <div>
+    <div data-invalid={error ? "true" : undefined}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <span className="text-sm" style={{ color: "#E8EFF5" }}>
-            {label}
-          </span>
-          {hint && (
-            <span className="ml-1.5 text-xs" style={{ color: "#8A9BAD" }}>
-              ({hint})
-            </span>
-          )}
+          <span className="text-sm text-text">{label}</span>
+          {hint && <span className="ml-1.5 text-xs text-text-muted">({hint})</span>}
         </div>
         <input
           type="number"
@@ -694,64 +608,19 @@ function NumField({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          className="input-base w-24 text-right shrink-0"
-          style={{ padding: "10px 12px", borderColor: error ? "#C45A4A" : undefined }}
+          className="input-base w-24 text-right shrink-0 px-3! py-2.5!"
         />
       </div>
-      {error && (
-        <p className="text-xs text-right mt-1" style={{ color: "#C45A4A" }}>{error}</p>
-      )}
+      {error && <p className="text-xs text-right mt-1 text-danger">{error}</p>}
     </div>
-  );
-}
-
-function MoneyField({
-  label,
-  value,
-  onChange,
-  error,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium shrink-0" style={{ color: "#8A9BAD" }}>
-          PKR
-        </span>
-        <input
-          type="number"
-          inputMode="decimal"
-          placeholder="0"
-          min="0"
-          value={value}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-          className="input-base flex-1"
-          style={{ borderColor: error ? "#C45A4A" : undefined }}
-        />
-      </div>
-      {error && (
-        <p className="text-xs mt-1" style={{ color: "#C45A4A" }}>{error}</p>
-      )}
-    </Field>
   );
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm" style={{ color: "#8A9BAD" }}>
-        {label}
-      </span>
-      <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>
-        {value}
-      </span>
+      <span className="text-sm text-text-muted">{label}</span>
+      <span className="text-sm font-semibold text-text">{value}</span>
     </div>
   );
 }

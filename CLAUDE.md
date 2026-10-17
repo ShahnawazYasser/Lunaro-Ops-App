@@ -234,7 +234,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-10-08 (finance-v2 Chunk 4). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-10-17 (finance-v2 Chunk 5b). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1197,14 +1197,30 @@ as prior phases). `bookings` confirmed empty and both test months'
   `Spinner`, `RowList`/`Row`/`StatLine`/`DetailSection`, `cx`.
 - Dashboard, Entries, Expenses, Bookings, Assets, Payouts clients now use them
   (3,217 → 2,276 lines). Logic, fetches and state untouched.
-- Not migrated yet: Attendance, Login, Reimburse, `BookingForm`, `ShiftEntryForm`, `BottomNav`
-  (still carry inline styles and their own `.input-base` copy).
+- Remaining screens migrated in Chunk 5b (below).
 - Known small visual unifications: danger/muted badge tints now one value, month-switcher
   arrows one padding, toast one position. Needs an eyeball on a real screen.
 
+**Chunk 5b — Remaining screens migrated (structure only, no behaviour change)**
+- Migrated onto the shared components: Attendance, Reimburse ("My Expenses"), Login,
+  `BottomNav`, `BookingForm`, `ShiftEntryForm`, and the `/entry` wrapper (`EntryClient`).
+  No inline `style={{}}` color/hex values remain in `app/` or `components/`
+  (one `<style>` block remains — `InputStyles` in `FormField.tsx`, the only
+  `.input-base` definition now). Login keeps hand-built PIN keys (Tailwind tokens, `animate-shake`).
+- Shared-component changes: `PageHeader` gains optional `right` (defaults to the Owner
+  badge; employee screens pass the user's name). `MoneyField` gains `placeholder` and
+  `disabled`; `.input-base:disabled { opacity: .6 }` moved into `InputStyles`.
+  `BookingForm` / `ShiftEntryForm` use the shared `FormField`/`MoneyField`/`Card`/`SectionLabel`
+  and drop their local copies; their submit buttons are `Button` with size overrides to keep the big CTA look.
+- Known small visual unifications: `/entry` header now shows the name on the right (was
+  "Lunaro Ops — Name" on the left); locked-entry banner uses the shared danger tint;
+  month-switcher arrows/toast match the 5a shared versions. Needs an eyeball on a real phone.
+- Verified: `tsc` and `npm run build` clean; against a production build, `/entry` and
+  `/reimburse` (Ahsan) and `/attendance`, `/bookings`, `/entries` (Owner) return 200 with no inline hex styles.
+  Not verified: on-screen visuals and interactions (no browser available this session).
+
 ### In progress
-- Finance-v2: Chunks 0–4 done. Chunk 4 is committed locally but **not yet
-  pushed/deployed** (as of 2026-10-08). Remaining finance-v2 pieces from the
+- Finance-v2: Chunks 0–4 done. Chunks 4 and 5a are pushed; 5b is uncommitted. Remaining finance-v2 pieces from the
   Chunk 1 schema — recurring-expenses UI and owner draws — are not built.
   Wait for an explicit prompt before starting them.
 - Phases A–F deployed — confirmed 2026-09-20: `master` HEAD (`ef47db1`)

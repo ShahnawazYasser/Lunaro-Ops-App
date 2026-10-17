@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import PageHeader from "@/components/PageHeader";
+import Card from "@/components/Card";
+import EmptyState from "@/components/EmptyState";
+import ErrorBanner from "@/components/ErrorBanner";
+import MonthSwitcher from "@/components/MonthSwitcher";
+import Spinner from "@/components/Spinner";
+import { cx } from "@/components/cx";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -157,70 +164,33 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
     : [];
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-20 px-4 py-3"
-        style={{ backgroundColor: "#0B1929", borderBottom: "1px solid rgba(200,212,224,0.12)" }}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-semibold" style={{ color: "#C9A84C" }}>Attendance</span>
-          <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}>
-            Owner
-          </span>
-        </div>
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader title="Attendance">
+        <MonthSwitcher label={formatMonthLabel(month)}
+          onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+      </PageHeader>
 
-        {/* Month switcher */}
-        <div className="flex items-center justify-between">
-          <button onClick={() => setMonth(prevMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            ←
-          </button>
-          <span className="text-sm font-medium">{formatMonthLabel(month)}</span>
-          <button onClick={() => setMonth(nextMonth)}
-            className="px-4 py-1.5 rounded-lg text-sm"
-            style={{ color: "#8A9BAD", border: "1px solid rgba(200,212,224,0.15)" }}>
-            →
-          </button>
-        </div>
-      </header>
+      {error && <ErrorBanner message={error} onRetry={() => { void fetchAttendance(month); }} />}
 
-      {/* Error */}
-      {error && (
-        <div className="mx-4 mt-4 p-3 rounded-xl text-sm flex items-center justify-between gap-3" style={{ backgroundColor: "rgba(196,90,74,0.15)", color: "#C45A4A", border: "1px solid rgba(196,90,74,0.3)" }}>
-          <span>{error}</span>
-          <button onClick={() => { void fetchAttendance(month); }}
-            className="shrink-0 text-xs px-3 py-1 rounded-lg" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }}>
-            Try again
-          </button>
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 rounded-full border-2 animate-spin"
-            style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
-        </div>
-      )}
+      {loading && <Spinner />}
 
       {/* Month summary + legend */}
       {!loading && data && (
-        <div className="px-4 py-3 space-y-3" style={{ borderBottom: "1px solid rgba(200,212,224,0.08)" }}>
+        <div className="px-4 py-3 space-y-3 border-b border-[rgba(200,212,224,0.08)]">
           <div className="flex flex-wrap gap-3">
             {data.employees.map((emp) => (
-              <div key={emp.id} className="flex-1 min-w-[120px] rounded-xl px-3 py-2"
-                style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-                <p className="text-xs" style={{ color: "#8A9BAD" }}>{emp.name}</p>
-                <p className="text-sm font-semibold" style={{ color: "#C9A84C" }}>
-                  {countPresent(emp)} <span className="font-normal" style={{ color: "#8A9BAD" }}>/ {data.daysInMonth} days</span>
+              <Card key={emp.id} size="sm" className="flex-1 min-w-[120px] px-3! py-2!">
+                <p className="text-xs text-text-muted">{emp.name}</p>
+                <p className="text-sm font-semibold text-gold">
+                  {countPresent(emp)} <span className="font-normal text-text-muted">/ {data.daysInMonth} days</span>
                 </p>
-              </div>
+              </Card>
             ))}
           </div>
           <div className="flex items-center gap-4">
-            <LegendItem color="rgba(74,196,122,0.25)" label="Present" />
-            <LegendItem color="rgba(196,90,74,0.25)" label="Absent" />
-            <LegendItem color="#0B1929" borderGold label="Edited" />
+            <LegendItem swatch="bg-success/25" label="Present" />
+            <LegendItem swatch="bg-danger/25" label="Absent" />
+            <LegendItem swatch="bg-bg" borderGold label="Edited" />
           </div>
         </div>
       )}
@@ -229,10 +199,9 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
       {!loading && data && (
         <main className="px-4 py-3 space-y-2">
           {dayRows.map((row) => (
-            <div key={row.date} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5"
-              style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
+            <Card key={row.date} size="sm" className="flex items-center justify-between gap-2 px-3! py-2.5!">
               <div className="shrink-0">
-                <p className="text-xs" style={{ color: "#8A9BAD" }}>{dayOfWeek(row.date)}</p>
+                <p className="text-xs text-text-muted">{dayOfWeek(row.date)}</p>
                 <p className="text-sm font-medium">{dayLabel(row.date)}</p>
               </div>
 
@@ -242,70 +211,69 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
                   const isLoading = toggling === key;
                   const isFuture = entry.status === "future";
 
-                  let bg = "#0B1929";
-                  let textColor = "#8A9BAD";
-                  if (entry.status === "present") { bg = "rgba(74,196,122,0.18)"; textColor = "#4AC47A"; }
-                  else if (entry.status === "absent") { bg = "rgba(196,90,74,0.18)"; textColor = "#C45A4A"; }
-
-                  const border = entry.isOverridden
-                    ? "1.5px solid rgba(201,168,76,0.7)"
-                    : "1px solid rgba(200,212,224,0.10)";
+                  const tone =
+                    entry.status === "present" ? "bg-success/[0.18] text-success"
+                    : entry.status === "absent" ? "bg-danger/[0.18] text-danger"
+                    : "bg-bg text-text-muted";
 
                   return (
                     <button key={entry.userId}
                       onClick={() => { void toggle(entry.userId, entry.date, entry.status); }}
                       disabled={isFuture || isLoading}
                       title={isFuture ? "Future date" : `Toggle ${entry.name} on ${entry.date}`}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all"
-                      style={{ backgroundColor: bg, border, opacity: isLoading ? 0.5 : 1, cursor: isFuture ? "default" : "pointer" }}>
-                      <span className="text-xs font-medium" style={{ color: isFuture ? "#8A9BAD" : textColor }}>
-                        {entry.name}
-                      </span>
+                      className={cx(
+                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all",
+                        tone,
+                        entry.isOverridden
+                          ? "border-[1.5px] border-gold/70"
+                          : "border border-[rgba(200,212,224,0.10)]",
+                        isLoading && "opacity-50",
+                        isFuture ? "cursor-default" : "cursor-pointer",
+                      )}>
+                      <span className="text-xs font-medium">{entry.name}</span>
                       {isLoading ? (
-                        <div className="w-3 h-3 rounded-full border animate-spin"
-                          style={{ borderColor: "rgba(201,168,76,0.3)", borderTopColor: "#C9A84C" }} />
+                        <div className="w-3 h-3 rounded-full border animate-spin border-gold/30 border-t-gold" />
                       ) : entry.status === "present" ? (
-                        <svg width="12" height="12" fill="none" stroke="#4AC47A" strokeWidth="2.5" viewBox="0 0 16 16">
+                        <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 16 16">
                           <path d="M3 8l4 4 6-6" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       ) : entry.status === "absent" ? (
-                        <svg width="10" height="10" fill="none" stroke="#C45A4A" strokeWidth="2.5" viewBox="0 0 16 16">
+                        <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 16 16">
                           <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
                         </svg>
                       ) : (
-                        <span className="text-xs" style={{ color: "#8A9BAD" }}>—</span>
+                        <span className="text-xs">—</span>
                       )}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </Card>
           ))}
 
           {/* Hint */}
-          <p className="text-xs text-center pt-3 pb-1" style={{ color: "#8A9BAD" }}>
+          <p className="text-xs text-center pt-3 pb-1 text-text-muted">
             Tap a name to toggle present / absent · Gold border = manually edited
           </p>
         </main>
       )}
 
-      {!loading && !data && !error && (
-        <div className="text-center py-16 text-sm" style={{ color: "#8A9BAD" }}>
-          No data
-        </div>
-      )}
+      {!loading && !data && !error && <EmptyState message="No data" tall />}
 
       <BottomNav role="owner" />
     </div>
   );
 }
 
-function LegendItem({ color, label, borderGold }: { color: string; label: string; borderGold?: boolean }) {
+function LegendItem({ swatch, label, borderGold }: { swatch: string; label: string; borderGold?: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-4 h-4 rounded"
-        style={{ backgroundColor: color, border: borderGold ? "1.5px solid rgba(201,168,76,0.7)" : "1px solid rgba(200,212,224,0.15)" }} />
-      <span className="text-xs" style={{ color: "#8A9BAD" }}>{label}</span>
+      <div className={cx(
+        "w-4 h-4 rounded",
+        swatch,
+        borderGold ? "border-[1.5px] border-gold/70" : "border border-[rgba(200,212,224,0.15)]",
+      )} />
+      <span className="text-xs text-text-muted">{label}</span>
     </div>
   );
 }

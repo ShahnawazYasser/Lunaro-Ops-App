@@ -2,6 +2,10 @@
 
 import { useState, useCallback } from "react";
 import type { BookingStatus } from "@/lib/supabase/types";
+import Button from "./Button";
+import Card from "./Card";
+import FormField, { MoneyField, InputStyles } from "./FormField";
+import SectionLabel from "./SectionLabel";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -185,7 +189,7 @@ export default function BookingForm({
     <div className="space-y-5">
       {/* ── Event Details ────────────────────────────────────── */}
       <Section title="Event Details">
-        <Field label="Client name">
+        <FormField label="Client name">
           <input
             type="text"
             placeholder="e.g. Sana Malik"
@@ -193,8 +197,8 @@ export default function BookingForm({
             onChange={(e) => setField("clientName", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
-        <Field label="Event name (optional)">
+        </FormField>
+        <FormField label="Event name (optional)">
           <input
             type="text"
             placeholder="e.g. Mehndi"
@@ -202,8 +206,8 @@ export default function BookingForm({
             onChange={(e) => setField("eventName", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
-        <Field label="Package (optional)">
+        </FormField>
+        <FormField label="Package (optional)">
           <input
             type="text"
             placeholder="e.g. 2-hour booth + props"
@@ -211,21 +215,21 @@ export default function BookingForm({
             onChange={(e) => setField("package", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
+        </FormField>
         <MoneyField
           label="Amount charged"
           value={form.amountCharged}
           onChange={(v) => setField("amountCharged", v)}
         />
-        <Field label="Event date">
+        <FormField label="Event date">
           <input
             type="date"
             value={form.eventDate}
             onChange={(e) => setField("eventDate", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
-        <Field label="Notes (optional)">
+        </FormField>
+        <FormField label="Notes (optional)">
           <input
             type="text"
             placeholder="Anything worth remembering"
@@ -233,9 +237,9 @@ export default function BookingForm({
             onChange={(e) => setField("notes", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
+        </FormField>
         {showFinalPayment && (
-          <Field label="Status">
+          <FormField label="Status">
             <select
               value={form.status}
               onChange={(e) => setField("status", e.target.value as BookingStatus)}
@@ -245,13 +249,13 @@ export default function BookingForm({
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
             </select>
-          </Field>
+          </FormField>
         )}
       </Section>
 
       {/* ── Advance Received ─────────────────────────────────── */}
       <Section title="Advance Received">
-        <p className="text-xs" style={{ color: "#8A9BAD" }}>
+        <p className="text-xs text-text-muted">
           Leave blank if nothing has been paid yet.
         </p>
         <MoneyField
@@ -259,20 +263,20 @@ export default function BookingForm({
           value={form.advanceAmount}
           onChange={setAdvanceAmount}
         />
-        <Field label="Date received">
+        <FormField label="Date received">
           <input
             type="date"
             value={form.advanceDate}
             onChange={(e) => setField("advanceDate", e.target.value)}
             className="input-base w-full"
           />
-        </Field>
+        </FormField>
       </Section>
 
       {/* ── Final Payment (edit only) ────────────────────────── */}
       {showFinalPayment && (
         <Section title="Final Payment">
-          <p className="text-xs" style={{ color: "#8A9BAD" }}>
+          <p className="text-xs text-text-muted">
             Leave blank until the rest is paid.
           </p>
           <MoneyField
@@ -280,14 +284,14 @@ export default function BookingForm({
             value={form.finalAmount}
             onChange={setFinalAmount}
           />
-          <Field label="Date received">
+          <FormField label="Date received">
             <input
               type="date"
               value={form.finalDate}
               onChange={(e) => setField("finalDate", e.target.value)}
               className="input-base w-full"
             />
-          </Field>
+          </FormField>
         </Section>
       )}
 
@@ -295,13 +299,10 @@ export default function BookingForm({
       <Section title="Summary">
         <SummaryRow label="Amount charged" value={pkr(amountCharged)} />
         <SummaryRow label="Received so far" value={pkr(received)} />
-        <div className="pt-3 mt-1" style={{ borderTop: "1px solid rgba(200,212,224,0.12)" }}>
+        <div className="pt-3 mt-1 border-t border-border">
           <div className="flex items-center justify-between">
-            <span className="text-sm" style={{ color: "#8A9BAD" }}>Balance due</span>
-            <span
-              className="text-base font-semibold"
-              style={{ color: balanceDue > 0 ? "#C9A84C" : "#4AC47A" }}
-            >
+            <span className="text-sm text-text-muted">Balance due</span>
+            <span className={`text-base font-semibold ${balanceDue > 0 ? "text-gold" : "text-success"}`}>
               {balanceDue > 0 ? pkr(balanceDue) : "Fully paid"}
             </span>
           </div>
@@ -309,31 +310,15 @@ export default function BookingForm({
       </Section>
 
       {/* ── Submit ──────────────────────────────────────────── */}
-      <button
+      <Button
         onClick={handleSubmit}
         disabled={submitting}
-        className="w-full py-4 rounded-2xl text-base font-semibold transition-opacity"
-        style={{ backgroundColor: "#C9A84C", color: "#0B1929", opacity: submitting ? 0.65 : 1 }}
+        className="w-full py-4! rounded-2xl! text-base!"
       >
         {submitting ? submittingLabel : submitLabel}
-      </button>
+      </Button>
 
-      <style>{`
-        .input-base {
-          background-color: #0B1929;
-          color: #E8EFF5;
-          border: 1px solid rgba(200,212,224,0.2);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 16px;
-          line-height: 1.4;
-          outline: none;
-          transition: border-color 0.15s;
-        }
-        .input-base:focus { border-color: rgba(201,168,76,0.5); }
-        select.input-base option { background-color: #16293D; }
-        input[type="date"] { color-scheme: dark; }
-      `}</style>
+      <InputStyles />
     </div>
   );
 }
@@ -343,49 +328,17 @@ export default function BookingForm({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "#8A9BAD" }}>
-        {title}
-      </p>
-      <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: "#16293D", border: "1px solid rgba(200,212,224,0.10)" }}>
-        {children}
-      </div>
+      <SectionLabel>{title}</SectionLabel>
+      <Card className="space-y-4">{children}</Card>
     </section>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="block text-sm font-medium mb-1.5" style={{ color: "#8A9BAD" }}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function MoneyField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium shrink-0" style={{ color: "#8A9BAD" }}>PKR</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          placeholder="0"
-          min="0"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="input-base flex-1"
-        />
-      </div>
-    </Field>
   );
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm" style={{ color: "#8A9BAD" }}>{label}</span>
-      <span className="text-sm font-semibold" style={{ color: "#E8EFF5" }}>{value}</span>
+      <span className="text-sm text-text-muted">{label}</span>
+      <span className="text-sm font-semibold text-text">{value}</span>
     </div>
   );
 }

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { cx } from "@/components/cx";
 
 const NAMES = ["Ahsan", "Farhan", "Owner"] as const;
 type UserName = (typeof NAMES)[number];
+
+// Shared look of every PIN-pad key
+const KEY_CLS =
+  "py-5 rounded-2xl text-2xl transition-all active:scale-95 bg-surface border border-[rgba(200,212,224,0.10)]";
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
@@ -86,31 +91,18 @@ export default function LoginClient() {
   };
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center p-6"
-      style={{ backgroundColor: "#0B1929" }}
-    >
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-bg">
       <div className="w-full max-w-xs">
         {/* Header */}
         <div className="text-center mb-10">
-          <h1
-            className="text-3xl font-semibold tracking-tight"
-            style={{ color: "#C9A84C" }}
-          >
-            Lunaro Ops
-          </h1>
-          <p className="mt-1 text-sm" style={{ color: "#8A9BAD" }}>
-            Internal staff tool
-          </p>
+          <h1 className="text-3xl font-semibold tracking-tight text-gold">Lunaro Ops</h1>
+          <p className="mt-1 text-sm text-text-muted">Internal staff tool</p>
         </div>
 
         {!selectedName ? (
           /* ── Step 1: Name selection ─────────────────────────── */
           <div>
-            <p
-              className="text-center text-xs font-semibold uppercase tracking-widest mb-4"
-              style={{ color: "#8A9BAD" }}
-            >
+            <p className="text-center text-xs font-semibold uppercase tracking-widest mb-4 text-text-muted">
               Who are you?
             </p>
             <div className="space-y-3">
@@ -118,12 +110,7 @@ export default function LoginClient() {
                 <button
                   key={name}
                   onClick={() => handleNameSelect(name)}
-                  className="w-full py-4 rounded-2xl text-lg font-medium transition-all active:scale-[0.98]"
-                  style={{
-                    backgroundColor: "#16293D",
-                    color: "#E8EFF5",
-                    border: "1px solid rgba(200,212,224,0.12)",
-                  }}
+                  className="w-full py-4 rounded-2xl text-lg font-medium transition-all active:scale-[0.98] bg-surface text-text border border-border"
                 >
                   {name}
                 </button>
@@ -134,44 +121,27 @@ export default function LoginClient() {
           /* ── Step 2: PIN entry ──────────────────────────────── */
           <div>
             {/* Back link */}
-            <button
-              onClick={handleBack}
-              className="flex items-center gap-1 text-sm mb-8"
-              style={{ color: "#8A9BAD" }}
-            >
+            <button onClick={handleBack} className="flex items-center gap-1 text-sm mb-8 text-text-muted">
               <span>←</span>
               <span>{selectedName}</span>
             </button>
 
             {/* PIN dots */}
-            <div
-              className="flex justify-center gap-5 mb-3"
-              style={{
-                animation: shake ? "shake 0.45s ease-in-out" : "none",
-              }}
-            >
+            <div className={cx("flex justify-center gap-5 mb-3", shake && "animate-shake")}>
               {[0, 1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="w-4 h-4 rounded-full transition-all duration-150"
-                  style={{
-                    backgroundColor:
-                      i < pin.length
-                        ? "#C9A84C"
-                        : "rgba(200,212,224,0.18)",
-                    transform: i < pin.length ? "scale(1.15)" : "scale(1)",
-                  }}
+                  className={cx(
+                    "w-4 h-4 rounded-full transition-all duration-150",
+                    i < pin.length ? "bg-gold scale-[1.15]" : "bg-[rgba(200,212,224,0.18)]",
+                  )}
                 />
               ))}
             </div>
 
             {/* Error */}
             <div className="h-6 text-center mb-4">
-              {error && (
-                <p className="text-sm" style={{ color: "#C45A4A" }}>
-                  {error}
-                </p>
-              )}
+              {error && <p className="text-sm text-danger">{error}</p>}
             </div>
 
             {/* PIN pad */}
@@ -181,12 +151,7 @@ export default function LoginClient() {
                   key={d}
                   onClick={() => handleDigit(d)}
                   disabled={loading || pin.length >= 4}
-                  className="py-5 rounded-2xl text-2xl font-medium transition-all active:scale-95 disabled:opacity-40"
-                  style={{
-                    backgroundColor: "#16293D",
-                    color: "#E8EFF5",
-                    border: "1px solid rgba(200,212,224,0.10)",
-                  }}
+                  className={`${KEY_CLS} text-text font-medium disabled:opacity-40`}
                 >
                   {d}
                 </button>
@@ -196,12 +161,7 @@ export default function LoginClient() {
               <button
                 onClick={handleBackspace}
                 disabled={loading || pin.length === 0}
-                className="py-5 rounded-2xl text-2xl transition-all active:scale-95 disabled:opacity-30"
-                style={{
-                  backgroundColor: "#16293D",
-                  color: "#8A9BAD",
-                  border: "1px solid rgba(200,212,224,0.10)",
-                }}
+                className={`${KEY_CLS} text-text-muted disabled:opacity-30`}
               >
                 ⌫
               </button>
@@ -210,12 +170,7 @@ export default function LoginClient() {
               <button
                 onClick={() => handleDigit("0")}
                 disabled={loading || pin.length >= 4}
-                className="py-5 rounded-2xl text-2xl font-medium transition-all active:scale-95 disabled:opacity-40"
-                style={{
-                  backgroundColor: "#16293D",
-                  color: "#E8EFF5",
-                  border: "1px solid rgba(200,212,224,0.10)",
-                }}
+                className={`${KEY_CLS} text-text font-medium disabled:opacity-40`}
               >
                 0
               </button>
@@ -223,13 +178,7 @@ export default function LoginClient() {
               {/* Spinner placeholder */}
               <div className="flex items-center justify-center">
                 {loading && (
-                  <div
-                    className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
-                    style={{
-                      borderColor: "#C9A84C",
-                      borderTopColor: "transparent",
-                    }}
-                  />
+                  <div className="w-6 h-6 rounded-full border-2 animate-spin border-gold border-t-transparent" />
                 )}
               </div>
             </div>

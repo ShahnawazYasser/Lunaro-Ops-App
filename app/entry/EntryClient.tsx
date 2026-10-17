@@ -2,6 +2,9 @@
 
 import { useState, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
+import Card from "@/components/Card";
+import PageHeader from "@/components/PageHeader";
+import Toast, { type ToastState } from "@/components/Toast";
 import ShiftEntryForm, {
   blankShiftEntryValues,
   type ShiftEntryPayload,
@@ -13,19 +16,14 @@ interface Props {
   venues: Venue[];
 }
 
-interface Toast {
-  type: "success" | "error";
-  message: string;
-}
-
 export default function EntryClient({ user, venues }: Props) {
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [lockedMessage, setLockedMessage] = useState<string | null>(null);
   // Bumped after a successful save — remounts the form back to a blank state.
   const [formKey, setFormKey] = useState(0);
 
-  const showToast = useCallback((type: Toast["type"], message: string) => {
+  const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
@@ -62,62 +60,26 @@ export default function EntryClient({ user, venues }: Props) {
   };
 
   return (
-    <div className="min-h-screen pb-24" style={{ backgroundColor: "#0B1929", color: "#E8EFF5" }}>
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <header
-        className="sticky top-0 z-20 flex items-center justify-between px-4 py-3"
-        style={{
-          backgroundColor: "#0B1929",
-          borderBottom: "1px solid rgba(200,212,224,0.12)",
-        }}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-semibold" style={{ color: "#C9A84C" }}>
-            Lunaro Ops
-          </span>
-          <span className="text-sm" style={{ color: "#8A9BAD" }}>
-            — {user.name}
-          </span>
-        </div>
-      </header>
-
-      {/* ── Toast ──────────────────────────────────────────────── */}
-      {toast && (
-        <div
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-xl"
-          style={{
-            backgroundColor: toast.type === "success" ? "#4AC47A" : "#C45A4A",
-            color: "#fff",
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+    <div className="min-h-screen pb-24 bg-bg text-text">
+      <PageHeader
+        title="Lunaro Ops"
+        right={<span className="text-sm text-text-muted">{user.name}</span>}
+      />
+      <Toast toast={toast} />
 
       {/* ── Locked entry banner ──────────────────────────────────── */}
       {lockedMessage && (
         <div className="max-w-lg mx-auto px-4 pt-4">
-          <div
-            className="p-3.5 rounded-xl text-sm"
-            style={{
-              backgroundColor: "rgba(196,90,74,0.15)",
-              color: "#C45A4A",
-              border: "1px solid rgba(196,90,74,0.3)",
-            }}
-          >
+          <Card tone="danger" size="sm" className="text-sm text-danger">
             {lockedMessage}
-          </div>
+          </Card>
         </div>
       )}
 
       {/* ── Page title ─────────────────────────────────────────── */}
       <div className="px-4 pt-5 pb-2 max-w-lg mx-auto">
-        <h1 className="text-xl font-semibold" style={{ color: "#E8EFF5" }}>
-          Daily Entry
-        </h1>
-        <p className="text-sm mt-0.5" style={{ color: "#8A9BAD" }}>
-          Fill in your shift details below
-        </p>
+        <h1 className="text-xl font-semibold text-text">Daily Entry</h1>
+        <p className="text-sm mt-0.5 text-text-muted">Fill in your shift details below</p>
       </div>
 
       <main className="max-w-lg mx-auto px-4 pb-10">

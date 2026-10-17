@@ -26,9 +26,11 @@ interface MoneyFieldProps {
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  placeholder?: string;
+  disabled?: boolean;
 }
 
-export function MoneyField({ label, value, onChange, error }: MoneyFieldProps) {
+export function MoneyField({ label, value, onChange, error, placeholder = "0", disabled }: MoneyFieldProps) {
   return (
     <FormField label={label} error={error}>
       <div className="flex items-center gap-2">
@@ -36,9 +38,10 @@ export function MoneyField({ label, value, onChange, error }: MoneyFieldProps) {
         <input
           type="number"
           inputMode="decimal"
-          placeholder="0"
+          placeholder={placeholder}
           min="0"
           value={value}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           className="input-base flex-1"
         />
@@ -63,6 +66,7 @@ export function InputStyles() {
         transition: border-color 0.15s;
       }
       .input-base:focus { border-color: rgba(201,168,76,0.5); }
+      .input-base:disabled { opacity: 0.6; }
       [data-invalid="true"] .input-base { border-color: #C45A4A !important; }
       select.input-base option { background-color: #16293D; }
       input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
