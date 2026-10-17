@@ -13,6 +13,9 @@ export interface VenueRevenue {
   venueName: string;
   revenue: number;
   shiftCount: number;
+  // Payout cycles received this month (venues that collect from guests
+  // themselves and pay Lunaro, e.g. Lanes). 0 for booth-collected venues.
+  payoutCycles: number;
 }
 
 export interface AttendanceSummaryRow {
@@ -56,6 +59,15 @@ export interface DashboardResponse {
   // qualifying payments, for the "Client events" line's subtitle.
   bookingRevenue: number;
   bookingPaymentsCount: number;
+  // Venue payout revenue (Chunk 7) — CASH BASIS on payout_cycles.received_on.
+  // payoutRevenue is gross_amount (never received_amount, which is net of
+  // rent); payoutRent is rent_deducted, counted once as an expense and shown
+  // separately. payoutRevenue - payoutRent reconciles to the amount banked.
+  // payoutRent is already inside totalExpenses but is NOT in
+  // expensesByCategory (which only groups `expenses` rows).
+  payoutRevenue: number;
+  payoutRent: number;
+  payoutCyclesPaid: number;
   // Straight-line depreciation for the month (Chunk 2) — a non-cash cost,
   // computed live from the asset_depreciation view. Only this month's slice
   // counts, never an asset's full cost. Included in netProfit alongside
@@ -117,7 +129,7 @@ export async function GET(request: NextRequest) {
     // Marking one paid never moves it between months.
     supabaseAdmin
       .from("expenses")
-      .select("amount, category, paid_by, reimbursement_status, shift_entry_id")
+      .select("amount, category, paid_by, reimbursement_status, shift_entry_id, venue_id")
       .gte("expense_date", startDate)
       .lte("expense_date", endDate),
 
@@ -153,10 +165,11 @@ export async function GET(request: NextRequest) {
     supabaseAdmin.from("asset_depreciation").select("amount").eq("month", startDate),
 
     // Rent-coverage check (Chunk 4) — active recurring costs tied to a
-    // venue, and every payout cycle with a known (manually-entered)
-    // payout_due for that venue. Both queried in full (not scoped to this
+    // venue, and every payout cycle. Queried in full (not scoped to this
     // month) since "next payout due" needs to look forward past the
-    // selected month too.
+    // selected month too. Chunk 7 reuses the same rows for payout revenue,
+    // so rows with a null payout_due are included (a received cycle may
+    // never have had a due date entered); payout_due consumers filter below.
     supabaseAdmin
       .from("recurring_expenses")
       .select("name, amount, venue_id")
@@ -165,9 +178,7 @@ export async function GET(request: NextRequest) {
 
     supabaseAdmin
       .from("payout_cycles")
-      .select("venue_id, payout_due")
-      .not("payout_due", "is", null)
-      .order("payout_due", { ascending: true }),
+      .select("venue_id, payout_due, gross_amount, rent_deducted, received_on"),
   ]);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
@@ -181,14 +192,38 @@ export async function GET(request: NextRequest) {
   if (payoutErr) return NextResponse.json({ error: payoutErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
+  const cycleRows = payoutCycles ?? [];
 
-  let totalExpenses = 0;
+  // Venues whose rent comes out of payouts (rent_deducted). Their 'Rent' rows
+  // in `expenses` are excluded below so the rent is counted exactly once.
+  const payoutVenueIds = new Set(cycleRows.map((c) => c.venue_id));
+
+  // Payout revenue — CASH BASIS: a cycle counts in the month its received_on
+  // falls in. cycle_end and payout_due play no role; unreceived = nothing.
+  let payoutRevenue = 0;
+  let payoutRent = 0;
+  let payoutCyclesPaid = 0;
+  const payoutByVenue = new Map<string, { revenue: number; cycles: number }>();
+  for (const c of cycleRows) {
+    if (!c.received_on || c.received_on < startDate || c.received_on > endDate) continue;
+    const gross = c.gross_amount ?? 0;
+    payoutRevenue += gross;
+    payoutRent += c.rent_deducted;
+    payoutCyclesPaid += 1;
+    const agg = payoutByVenue.get(c.venue_id) ?? { revenue: 0, cycles: 0 };
+    agg.revenue += gross;
+    agg.cycles += 1;
+    payoutByVenue.set(c.venue_id, agg);
+  }
+
+  let totalExpenses = payoutRent;
   let operationalExpenses = 0;
   let reimbursements = 0;
   let owedToEmployees = 0;
   const categoryAgg = new Map<string, number>();
 
   for (const e of expenseRows ?? []) {
+    if (e.category === "Rent" && e.venue_id && payoutVenueIds.has(e.venue_id)) continue;
     totalExpenses += e.amount;
     if (e.shift_entry_id) operationalExpenses += e.amount;
     if (e.paid_by === "employee") {
@@ -211,7 +246,9 @@ export async function GET(request: NextRequest) {
   const rentCoverage: RentCoverageItem[] = [];
   for (const rec of recurringExpenses ?? []) {
     if (!rec.venue_id) continue;
-    const venueCycles = (payoutCycles ?? []).filter((c) => c.venue_id === rec.venue_id);
+    const venueCycles = cycleRows
+      .filter((c) => c.venue_id === rec.venue_id && c.payout_due !== null)
+      .sort((a, b) => a.payout_due!.localeCompare(b.payout_due!));
     const covered = venueCycles.some(
       (c) => c.payout_due! >= startDate && c.payout_due! <= endDate
     );
@@ -226,7 +263,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Revenue + free/waste print totals, grouped by venue
-  const venueAgg = new Map<string, { revenue: number; shiftCount: number }>();
+  const venueAgg = new Map<string, { revenue: number; shiftCount: number; payoutCycles: number }>();
   let totalRevenue = 0;
   let freePrintsCount = 0;
   let wastePrints = 0;
@@ -237,11 +274,20 @@ export async function GET(request: NextRequest) {
     freePrintsCount += s.free_prints;
     wastePrints += s.waste_prints;
 
-    const existing = venueAgg.get(s.venue_id) ?? { revenue: 0, shiftCount: 0 };
+    const existing = venueAgg.get(s.venue_id) ?? { revenue: 0, shiftCount: 0, payoutCycles: 0 };
     existing.revenue += entryRevenue;
     existing.shiftCount += 1;
     venueAgg.set(s.venue_id, existing);
   }
+
+  // Payout-only venues (no shift entries) still appear with their real revenue.
+  for (const [venueId, p] of payoutByVenue) {
+    const existing = venueAgg.get(venueId) ?? { revenue: 0, shiftCount: 0, payoutCycles: 0 };
+    existing.revenue += p.revenue;
+    existing.payoutCycles += p.cycles;
+    venueAgg.set(venueId, existing);
+  }
+  totalRevenue += payoutRevenue;
 
   const revenueByVenue: VenueRevenue[] = Array.from(venueAgg.entries())
     .map(([venueId, agg]) => ({
@@ -249,6 +295,7 @@ export async function GET(request: NextRequest) {
       venueName: venueNameMap.get(venueId) ?? venueId,
       revenue: agg.revenue,
       shiftCount: agg.shiftCount,
+      payoutCycles: agg.payoutCycles,
     }))
     .sort((a, b) => b.revenue - a.revenue);
 
@@ -304,6 +351,9 @@ export async function GET(request: NextRequest) {
     wastePrints,
     bookingRevenue,
     bookingPaymentsCount,
+    payoutRevenue,
+    payoutRent,
+    payoutCyclesPaid,
     depreciation,
     revenueByVenue,
     expensesByCategory,

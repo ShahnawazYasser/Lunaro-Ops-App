@@ -19,6 +19,7 @@ interface VenueRevenue {
   venueName: string;
   revenue: number;
   shiftCount: number;
+  payoutCycles: number;
 }
 
 interface CategoryExpense {
@@ -50,6 +51,9 @@ interface DashboardResponse {
   wastePrints: number;
   bookingRevenue: number;
   bookingPaymentsCount: number;
+  payoutRevenue: number;
+  payoutRent: number;
+  payoutCyclesPaid: number;
   depreciation: number;
   revenueByVenue: VenueRevenue[];
   expensesByCategory: CategoryExpense[];
@@ -123,7 +127,7 @@ export default function DashboardClient() {
 
   useEffect(() => { void fetchDashboard(month); }, [month, fetchDashboard]);
 
-  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.bookingRevenue > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
+  const hasActivity = !!data && (data.revenueByVenue.length > 0 || data.bookingRevenue > 0 || data.payoutRevenue > 0 || data.totalRevenue > 0 || data.totalExpenses > 0);
 
   return (
     <div className="min-h-screen pb-24 bg-bg text-text">
@@ -173,6 +177,13 @@ export default function DashboardClient() {
           {/* ── Stat cards ───────────────────────────────────────── */}
           <section className="grid grid-cols-2 gap-3">
             <StatCard label="Total Revenue" value={pkr(data.totalRevenue)} />
+            {data.payoutCyclesPaid > 0 && (
+              <StatCard
+                label="Venue Payouts"
+                value={pkr(data.payoutRevenue)}
+                sub={`${data.payoutCyclesPaid} ${data.payoutCyclesPaid === 1 ? "payout" : "payouts"} received`}
+              />
+            )}
             <StatCard label="Total Expenses" value={pkr(data.totalExpenses)} />
             <StatCard label="Owed to Staff" value={pkr(data.owedToEmployees)} accent={data.owedToEmployees > 0} />
             <StatCard label="Free Prints Given" value={`${data.freePrintsCount}`} sub={pkr(data.freePrintsCost)} />
@@ -190,7 +201,14 @@ export default function DashboardClient() {
                   <Row
                     key={v.venueId}
                     title={v.venueName}
-                    subtitle={`${v.shiftCount} ${v.shiftCount === 1 ? "shift" : "shifts"}`}
+                    subtitle={[
+                      v.shiftCount > 0 || v.payoutCycles === 0
+                        ? `${v.shiftCount} ${v.shiftCount === 1 ? "shift" : "shifts"}`
+                        : null,
+                      v.payoutCycles > 0
+                        ? `${v.payoutCycles} ${v.payoutCycles === 1 ? "payout" : "payouts"} received`
+                        : null,
+                    ].filter(Boolean).join(" · ")}
                     value={pkr(v.revenue)}
                   />
                 ))}
@@ -208,13 +226,21 @@ export default function DashboardClient() {
           {/* ── Expenses by category ─────────────────────────────── */}
           <section>
             <SectionLabel>Expenses by Category</SectionLabel>
-            {data.expensesByCategory.length === 0 && data.depreciation === 0 ? (
+            {data.expensesByCategory.length === 0 && data.payoutRent === 0 && data.depreciation === 0 ? (
               <Card size="list"><EmptyState message="No expenses logged this month" /></Card>
             ) : (
               <RowList>
                 {data.expensesByCategory.map((c) => (
                   <Row key={c.category} title={c.category} value={pkr(c.amount)} tone="text" />
                 ))}
+                {data.payoutRent > 0 && (
+                  <Row
+                    title="Venue rent"
+                    subtitle="Deducted from venue payouts"
+                    value={pkr(data.payoutRent)}
+                    tone="text"
+                  />
+                )}
                 {data.depreciation > 0 && (
                   <Row
                     title="Depreciation"
