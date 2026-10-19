@@ -84,25 +84,28 @@ input[type="number"] {
   --gradient-gold: linear-gradient(135deg, #E6C76A 0%, #C9A84C 55%, #8F7530 100%);
 }
 
-.glass {
-  position: relative;
-  background: rgb(22 41 61 / 0.72);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 18px 40px -14px rgb(0 0 0 / 0.38);
-}
-/* Gradient 1px border via masked pseudo-element */
-.glass::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.04));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  pointer-events: none;
+/* In the components layer so Tailwind utilities (fixed, absolute…) win. */
+@layer components {
+  .glass {
+    position: relative;
+    background: rgb(22 41 61 / 0.72);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 18px 40px -14px rgb(0 0 0 / 0.38);
+  }
+  /* Gradient 1px border via masked pseudo-element */
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08) 50%, rgb(255 255 255 / 0.04));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
 }
 
 /* Page background glows — fixed, behind everything */

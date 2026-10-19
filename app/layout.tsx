@@ -12,7 +12,6 @@ const display = Bricolage_Grotesque({
 
 const body = Hanken_Grotesk({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
   variable: "--font-body-loaded",
   display: "swap",
 });

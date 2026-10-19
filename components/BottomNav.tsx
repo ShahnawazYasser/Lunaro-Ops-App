@@ -131,7 +131,11 @@ export default function BottomNav({ role }: { role: string }) {
   const pathname = usePathname();
   const isOwner = role === "owner";
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [moreOpen, setMoreOpen] = useState(false);
+  // The sheet is tied to the path it was opened on, so any route change
+  // closes it without needing an effect.
+  const [moreOpenAt, setMoreOpenAt] = useState<string | null>(null);
+  const moreOpen = moreOpenAt === pathname;
+  const setMoreOpen = (open: boolean) => setMoreOpenAt(open ? pathname : null);
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -155,11 +159,6 @@ export default function BottomNav({ role }: { role: string }) {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
   }, [handleLogout]);
-
-  // Close the More sheet on any route change.
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
 
   const desktopMain = isOwner ? OWNER_MAIN : EMPLOYEE_NAV;
   const desktopSecondary = isOwner ? OWNER_SECONDARY : [];
@@ -224,7 +223,7 @@ export default function BottomNav({ role }: { role: string }) {
             label="More"
             icon={<IconMore />}
             active={moreActive || moreOpen}
-            onClick={() => setMoreOpen((o) => !o)}
+            onClick={() => setMoreOpen(!moreOpen)}
           />
         ) : (
           <TabButton label="Sign out" icon={<IconLogout />} active={false} onClick={() => { void handleLogout(); }} />

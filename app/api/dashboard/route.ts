@@ -78,6 +78,16 @@ export interface DashboardResponse {
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
   rentCoverage: RentCoverageItem[];
+  // "Booth sales by day" chart (Chunk 9): one entry per calendar day of the
+  // month, amount = cash_received + bank_received from that day's shift
+  // entries. Shift entries only — payouts and bookings are NOT in this series,
+  // so its sum equals the booth-sales share of totalRevenue.
+  dailyRevenue: DailyRevenue[];
+}
+
+export interface DailyRevenue {
+  date: string;
+  amount: number;
 }
 
 // GET /api/dashboard?month=2026-06
@@ -289,6 +299,15 @@ export async function GET(request: NextRequest) {
   }
   totalRevenue += payoutRevenue;
 
+  const dailyAgg = new Map<string, number>();
+  for (const s of shiftRows) {
+    dailyAgg.set(s.entry_date, (dailyAgg.get(s.entry_date) ?? 0) + s.cash_received + s.bank_received);
+  }
+  const dailyRevenue: DailyRevenue[] = Array.from({ length: daysInMonth }, (_, i) => {
+    const date = `${month}-${String(i + 1).padStart(2, "0")}`;
+    return { date, amount: dailyAgg.get(date) ?? 0 };
+  });
+
   const revenueByVenue: VenueRevenue[] = Array.from(venueAgg.entries())
     .map(([venueId, agg]) => ({
       venueId,
@@ -360,6 +379,7 @@ export async function GET(request: NextRequest) {
     attendance,
     daysInMonth,
     rentCoverage,
+    dailyRevenue,
   };
 
   return NextResponse.json(response);
