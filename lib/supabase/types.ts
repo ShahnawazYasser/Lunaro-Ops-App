@@ -507,6 +507,47 @@ export interface Database {
         };
         Relationships: [];
       };
+      entry_audit: {
+        Row: {
+          id: number;
+          entry_id: string;
+          entry_date: string;
+          actor_id: string | null;
+          action: "insert" | "update" | "delete";
+          changed: Record<string, { from: unknown; to: unknown }>;
+          was_collected: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          entry_id: string;
+          entry_date: string;
+          actor_id?: string | null;
+          action: "insert" | "update" | "delete";
+          changed: Record<string, { from: unknown; to: unknown }>;
+          was_collected?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          entry_id?: string;
+          entry_date?: string;
+          actor_id?: string | null;
+          action?: "insert" | "update" | "delete";
+          changed?: Record<string, { from: unknown; to: unknown }>;
+          was_collected?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "entry_audit_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       asset_depreciation: {

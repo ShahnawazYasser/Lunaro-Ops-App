@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAsActor } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
 
@@ -30,7 +30,7 @@ export async function PATCH(
     return NextResponse.json({ error: "collected must be a boolean" }, { status: 400 });
   }
 
-  const { error } = await supabaseAdmin
+  const { error } = await supabaseAsActor(session.userId)
     .from("shift_entries")
     .update({
       cash_collected: body.collected,

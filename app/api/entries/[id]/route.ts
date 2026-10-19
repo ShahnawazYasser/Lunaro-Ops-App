@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
 
@@ -93,7 +93,7 @@ export async function PUT(
     );
   }
 
-  const { error: updateError } = await supabaseAdmin
+  const { error: updateError } = await supabaseAsActor(session.userId)
     .from("shift_entries")
     .update({
       venue_id: body.venueId,
@@ -114,7 +114,17 @@ export async function PUT(
     })
     .eq("id", id);
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (updateError) {
+    // Venue is part of the uniqueness key (user + date + venue): moving this
+    // entry onto a venue the same person already logged that day collides.
+    if (updateError.code === "23505") {
+      return NextResponse.json(
+        { error: "That employee already has an entry for this venue on this date." },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
 
   // Replace expenses atomically (delete + insert in one DB transaction)
   const validExpenses = (body.expenses ?? []).filter(

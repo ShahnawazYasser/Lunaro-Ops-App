@@ -71,7 +71,9 @@ create table public.shift_entries (
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
 
-  unique (user_id, entry_date)
+  -- Widened from (user_id, entry_date) in Chunk 8a: one person can log two
+  -- venues on the same day.
+  constraint shift_entries_user_date_venue_key unique (user_id, entry_date, venue_id)
 );
 
 -- ─── Expenses (unified money-out table, Phase D) ─────────────────────────────
@@ -241,6 +243,124 @@ begin
   from jsonb_array_elements(p_expenses) e;
 end;
 $$;
+
+-- ─── Entry audit trail (Chunk 8a) ────────────────────────────────────────────
+-- Append-only change log for shift_entries, written by a trigger so no code
+-- path can skip it. entry_id has NO foreign key on purpose: history must
+-- outlive the row it describes (a cascade would erase it on delete).
+-- Actor comes from `app.actor_id` or the `x-actor-id` request header
+-- (lib/supabase/server.ts supabaseAsActor); null actor = write bypassed the app.
+create table public.entry_audit (
+  id            bigserial primary key,
+  entry_id      uuid not null,
+  entry_date    date not null,
+  actor_id      uuid references public.users (id),
+  action        text not null check (action in ('insert','update','delete')),
+  changed       jsonb not null,   -- { field: { from, to } }, changed fields only
+  was_collected boolean not null default false,  -- cash already reconciled when this happened
+  created_at    timestamptz not null default now()
+);
+
+create index entry_audit_entry_idx on public.entry_audit (entry_id, created_at desc);
+create index entry_audit_actor_idx on public.entry_audit (actor_id, created_at desc);
+create index entry_audit_date_idx  on public.entry_audit (entry_date);
+
+alter table public.entry_audit enable row level security;
+
+revoke all on public.entry_audit from public, anon, authenticated, service_role;
+grant select, insert on public.entry_audit to service_role;
+grant usage, select on sequence public.entry_audit_id_seq to service_role;
+
+-- SECURITY DEFINER; never raises — an audit failure must not block the write.
+create or replace function public.log_entry_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  tracked constant text[] := array[
+    'venue_id', 'event_name', 'entry_date', 'clock_in', 'clock_out',
+    'total_prints', 'extra_prints', 'system_prints_500', 'system_prints_250',
+    'free_prints', 'waste_prints', 'price_charged',
+    'cash_received', 'bank_received', 'notes', 'cash_collected'
+  ];
+  f         text;
+  o         jsonb;
+  n         jsonb;
+  diff      jsonb := '{}'::jsonb;
+  raw_actor text;
+  actor     uuid;
+begin
+  begin
+    raw_actor := nullif(current_setting('app.actor_id', true), '');
+    if raw_actor is null then
+      raw_actor := nullif(
+        nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-actor-id',
+        ''
+      );
+    end if;
+    if raw_actor is not null then
+      select u.id into actor from public.users u where u.id = raw_actor::uuid;
+    end if;
+  exception when others then
+    actor := null;
+  end;
+
+  begin
+    if tg_op = 'INSERT' then
+      n := to_jsonb(new);
+      foreach f in array tracked loop
+        if n -> f <> 'null'::jsonb then
+          diff := diff || jsonb_build_object(
+            f, jsonb_build_object('from', 'null'::jsonb, 'to', n -> f)
+          );
+        end if;
+      end loop;
+
+      insert into public.entry_audit (entry_id, entry_date, actor_id, action, changed, was_collected)
+      values (new.id, new.entry_date, actor, 'insert', diff, false);
+
+    elsif tg_op = 'UPDATE' then
+      o := to_jsonb(old);
+      n := to_jsonb(new);
+      foreach f in array tracked loop
+        if o -> f is distinct from n -> f then
+          diff := diff || jsonb_build_object(
+            f, jsonb_build_object('from', o -> f, 'to', n -> f)
+          );
+        end if;
+      end loop;
+
+      if diff <> '{}'::jsonb then
+        insert into public.entry_audit (entry_id, entry_date, actor_id, action, changed, was_collected)
+        values (new.id, new.entry_date, actor, 'update', diff, coalesce(old.cash_collected, false));
+      end if;
+
+    else
+      o := to_jsonb(old);
+      foreach f in array tracked loop
+        if o -> f <> 'null'::jsonb then
+          diff := diff || jsonb_build_object(
+            f, jsonb_build_object('from', o -> f, 'to', 'null'::jsonb)
+          );
+        end if;
+      end loop;
+
+      insert into public.entry_audit (entry_id, entry_date, actor_id, action, changed, was_collected)
+      values (old.id, old.entry_date, actor, 'delete', diff, coalesce(old.cash_collected, false));
+    end if;
+  exception when others then
+    raise warning 'log_entry_change failed for shift_entries %: %', tg_op, sqlerrm;
+  end;
+
+  return null;
+end;
+$$;
+
+create trigger shift_entries_audit
+  after insert or update or delete on public.shift_entries
+  for each row execute function public.log_entry_change();
 
 -- ─── Row-Level Security ───────────────────────────────────────────────────────
 alter table public.users               enable row level security;

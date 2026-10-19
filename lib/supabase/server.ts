@@ -19,3 +19,22 @@ export const supabaseAdmin = createClient<Database>(supabaseUrl, serviceRoleKey,
     persistSession: false,
   },
 });
+
+// Service-role client that tells the database who is acting. Use it for every
+// write to shift_entries so the audit trigger (migration_entry_audit.sql) can
+// record actor_id. The id travels as an `x-actor-id` request header, which
+// PostgREST exposes to Postgres as `request.headers`.
+//
+// Why a header and not set_config(): each supabase-js call is its own
+// PostgREST request and its own transaction, so a transaction-local
+// set_config('app.actor_id', ..., true) made in a separate call is gone
+// before the write runs. A header rides on the write request itself.
+export function supabaseAsActor(userId: string) {
+  return createClient<Database>(supabaseUrl as string, serviceRoleKey as string, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    global: { headers: { "x-actor-id": userId } },
+  });
+}

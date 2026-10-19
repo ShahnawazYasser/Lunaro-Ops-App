@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 import { monthRange } from "@/lib/dates";
 
 export const preferredRegion = "sin1";
@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
 
   const userId = session.userId;
 
-  // Check for existing entry for this user+date.
+  // Check for existing entry for this user+date+venue (the uniqueness key
+  // since migration_entry_audit.sql — one person may log two venues in a day).
   //
   // The lock: once the owner has touched a row — either by marking the cash
   // collected, or by editing it via PUT /api/entries/[id] — employee
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest) {
     .select("id, cash_collected, last_edited_by")
     .eq("user_id", userId)
     .eq("entry_date", entryDate)
+    .eq("venue_id", venueId)
     .maybeSingle();
 
   if (existing?.cash_collected || existing?.last_edited_by) {
@@ -162,11 +164,15 @@ export async function POST(request: NextRequest) {
     notes: null,
   };
 
+  // Writes to shift_entries go through the actor-tagged client so the audit
+  // trigger records who made the change.
+  const db = supabaseAsActor(userId);
+
   let entryId: string;
   const isUpdate = existing !== null;
 
   if (isUpdate) {
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await db
       .from("shift_entries")
       .update(entryFields)
       .eq("id", existing.id);
@@ -176,7 +182,7 @@ export async function POST(request: NextRequest) {
     }
     entryId = existing.id;
   } else {
-    const { data: inserted, error: insertError } = await supabaseAdmin
+    const { data: inserted, error: insertError } = await db
       .from("shift_entries")
       .insert(entryFields)
       .select("id")
