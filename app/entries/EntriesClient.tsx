@@ -49,7 +49,7 @@ interface EntryRow {
   last_edited_at: string | null;
   users: { name: string };
   venues: { name: string };
-  entry_expenses: { description: string; amount: number }[];
+  entry_expenses: { description: string; amount: number; category: string }[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -134,8 +134,9 @@ function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
       ? row.entry_expenses.map((e) => ({
           description: e.description,
           amount: String(e.amount),
+          category: e.category,
         }))
-      : [{ description: "", amount: "" }],
+      : [{ description: "", amount: "", category: "Operational" }],
   };
 }
 
@@ -394,7 +395,7 @@ export default function EntriesClient({ venues }: Props) {
                     {row.entry_expenses.length > 0 && (
                       <DetailSection title="Expenses">
                         {row.entry_expenses.map((exp, i) => (
-                          <StatLine key={i} label={exp.description} value={pkr(exp.amount)} />
+                          <StatLine key={i} label={`${exp.description} · ${exp.category}`} value={pkr(exp.amount)} />
                         ))}
                         <div className="pt-1.5 flex items-center justify-between border-t border-border/70">
                           <span className="text-xs text-text-muted">Net (received − expenses)</span>

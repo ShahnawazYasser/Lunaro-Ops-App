@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { resolveShiftCategory } from "@/lib/categories";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -7,6 +8,7 @@ export const preferredRegion = "sin1";
 interface ExpenseInput {
   description: string;
   amount: number;
+  category?: string;
 }
 
 interface EditBody {
@@ -68,6 +70,10 @@ export async function PUT(
     (typeof body.priceCharged !== "number" || !Number.isFinite(body.priceCharged) || body.priceCharged <= 0)
   ) {
     return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
+  }
+
+  if ((body.expenses ?? []).some((e) => resolveShiftCategory(e.category) === null)) {
+    return NextResponse.json({ error: "Pick a valid type for each expense." }, { status: 400 });
   }
 
   const { data: existing, error: fetchError } = await supabaseAdmin
@@ -136,6 +142,7 @@ export async function PUT(
     p_expenses: validExpenses.map((e) => ({
       description: e.description.trim(),
       amount: e.amount,
+      category: resolveShiftCategory(e.category),
     })),
   });
 

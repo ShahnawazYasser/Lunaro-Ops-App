@@ -5,6 +5,7 @@ import Button from "./Button";
 import Card from "./Card";
 import FormField, { MoneyField, InputStyles } from "./FormField";
 import SectionLabel from "./SectionLabel";
+import { SHIFT_EXPENSE_CATEGORIES } from "@/lib/categories";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ export interface Venue {
 export interface ExpenseValue {
   description: string;
   amount: string;
+  category: string;
 }
 
 /** Every field of the shift entry form, as raw strings (input values). */
@@ -56,7 +58,7 @@ export interface ShiftEntryPayload {
   priceCharged: number | null;
   cashReceived: number;
   bankReceived: number;
-  expenses: { description: string; amount: number }[];
+  expenses: { description: string; amount: number; category: string }[];
 }
 
 interface Props {
@@ -103,7 +105,7 @@ export function blankShiftEntryValues(): ShiftEntryFormValues {
     priceCharged: "",
     cashReceived: "",
     bankReceived: "",
-    expenses: [{ description: "", amount: "" }],
+    expenses: [{ description: "", amount: "", category: "Operational" }],
   };
 }
 
@@ -226,7 +228,7 @@ export default function ShiftEntryForm({
   const addExpense = () =>
     setForm((f) => ({
       ...f,
-      expenses: [...f.expenses, { description: "", amount: "" }],
+      expenses: [...f.expenses, { description: "", amount: "", category: "Operational" }],
     }));
 
   const removeExpense = (index: number) =>
@@ -234,7 +236,7 @@ export default function ShiftEntryForm({
       const expenses = f.expenses.filter((_, i) => i !== index);
       return {
         ...f,
-        expenses: expenses.length ? expenses : [{ description: "", amount: "" }],
+        expenses: expenses.length ? expenses : [{ description: "", amount: "", category: "Operational" }],
       };
     });
 
@@ -274,6 +276,7 @@ export default function ShiftEntryForm({
         .map((e) => ({
           description: e.description.trim(),
           amount: parseNum(e.amount),
+          category: e.category,
         })),
     });
   };
@@ -471,6 +474,17 @@ export default function ShiftEntryForm({
         {form.expenses.map((exp, i) => (
           <div key={i} className="flex gap-2 items-start mb-3">
             <div className="flex-1 space-y-2">
+              <select
+                value={exp.category}
+                disabled={disabled}
+                onChange={(e) => setExpenseField(i, "category", e.target.value)}
+                aria-label="Type of expense"
+                className="input-base w-full"
+              >
+                {SHIFT_EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
               <input
                 type="text"
                 placeholder="What was it for?"

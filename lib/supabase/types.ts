@@ -564,7 +564,7 @@ export interface Database {
       replace_entry_expenses: {
         Args: {
           p_shift_entry_id: string;
-          p_expenses: { description: string; amount: number }[];
+          p_expenses: { description: string; amount: number; category?: string | null }[];
         };
         Returns: void;
       };

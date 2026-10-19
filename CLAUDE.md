@@ -1250,6 +1250,18 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Lint: `eslint` still reports pre-existing `react-hooks/set-state-in-effect` errors in the data-fetch
   effects of the screens (including the dashboard) plus one unused var in `AttendanceClient`. Not new.
 
+**Shift expense categories (post-Chunk 9)**
+- Expense rows on a shift entry (employee `/entry` and the owner's entry edit) now have a category
+  dropdown. Before this, `replace_entry_expenses` hardcoded `'Operational'` and the form/API never carried a
+  category, so every shift expense landed there. `lib/categories.ts` has `SHIFT_EXPENSE_CATEGORIES`
+  (Operational default, Paper, Ink, Maintenance, Petrol, Food, Transport, Venue/Event, Misc — no Salary/Rent)
+  and `resolveShiftCategory()`. Both `POST /api/entries` and `PUT /api/entries/[id]` validate each row
+  **before any write** (bad category → 400); missing/blank → Operational. The RPC reads an optional
+  `category` per element (`migration_shift_expense_category.sql`, applied as `shift_expense_category`;
+  backward-compatible, so older deployed code keeps working). Existing rows stay Operational — the original
+  category was never recorded. `GET /api/entries` returns `category` and the entries detail shows it.
+- Verified: RPC in a rolled-back transaction; API 400s; UI payload via an intercepted submit (nothing written).
+
 ### In progress
 - Finance-v2: Chunks 0–4 done. Chunks 4 and 5a are pushed; 5b is uncommitted. Remaining finance-v2 pieces from the
   Chunk 1 schema — recurring-expenses UI and owner draws — are not built.

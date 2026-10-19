@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
+import { resolveShiftCategory } from "@/lib/categories";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 import { monthRange } from "@/lib/dates";
 
@@ -8,6 +9,7 @@ export const preferredRegion = "sin1";
 interface ExpenseInput {
   description: string;
   amount: number;
+  category?: string;
 }
 
 // GET /api/entries?month=2026-06 — owner-only log of all shift entries
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
       created_at,
       users!shift_entries_user_id_fkey!inner(name),
       venues!inner(name),
-      entry_expenses:expenses(description, amount)
+      entry_expenses:expenses(description, amount, category)
     `)
     .gte("entry_date", startDate)
     .lte("entry_date", endDate)
@@ -115,6 +117,10 @@ export async function POST(request: NextRequest) {
     (typeof priceCharged !== "number" || !Number.isFinite(priceCharged) || priceCharged <= 0)
   ) {
     return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
+  }
+
+  if ((expenses ?? []).some((e) => resolveShiftCategory(e.category) === null)) {
+    return NextResponse.json({ error: "Pick a valid type for each expense." }, { status: 400 });
   }
 
   const userId = session.userId;
@@ -207,6 +213,7 @@ export async function POST(request: NextRequest) {
     p_expenses: validExpenses.map((e) => ({
       description: e.description.trim(),
       amount: e.amount,
+      category: resolveShiftCategory(e.category),
     })),
   });
 

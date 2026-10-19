@@ -215,12 +215,12 @@ create trigger bookings_updated_at
 -- ─── Atomic expense replace ──────────────────────────────────────────────────
 -- Replaces all shift-linked expenses for a shift in a single transaction
 -- (delete + insert), so a failed insert can never leave a shift's expenses
--- wiped out. Shift expenses are always company-paid, category 'Operational',
--- and dated to the shift's own entry_date.
+-- wiped out. Shift expenses are always company-paid and dated to the shift's
+-- own entry_date; category comes from each element (default 'Operational').
 -- Name kept from Phase A so the existing rpc() callers keep working.
 create or replace function public.replace_entry_expenses(
   p_shift_entry_id uuid,
-  p_expenses jsonb  -- array of {description, amount}
+  p_expenses jsonb  -- array of {description, amount, category?}
 ) returns void language plpgsql as $$
 declare
   v_entry_date date;
@@ -237,7 +237,8 @@ begin
     (expense_date, category, amount, description,
      paid_by, shift_entry_id, venue_id, logged_by)
   select
-    v_entry_date, 'Operational',
+    v_entry_date,
+    coalesce(nullif(e->>'category', ''), 'Operational'),
     (e->>'amount')::numeric, e->>'description',
     'company', p_shift_entry_id, v_venue_id, v_user_id
   from jsonb_array_elements(p_expenses) e;
