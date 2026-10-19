@@ -238,7 +238,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-10-17 (finance-v2 Chunk 5b). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-10-19 (Chunk 9a/9b, dashboard redesign). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1222,6 +1222,33 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Verified: `tsc` and `npm run build` clean; against a production build, `/entry` and
   `/reimburse` (Ahsan) and `/attendance`, `/bookings`, `/entries` (Owner) return 200 with no inline hex styles.
   Not verified: on-screen visuals and interactions (no browser available this session).
+
+**Chunk 9 — Dashboard redesign (glass dark, from Figma)**
+- **9a (shell):** `app/globals.css` gains the extended tokens (`bg-deep`, `surface-raised`,
+  `surface-inset`, `gold-light`, `gold-dark`, `--radius-card/control`), `--gradient-gold`, a `.glass`
+  utility and two fixed background glows. **`.glass` must stay inside `@layer components`** — unlayered,
+  it overrides Tailwind's `fixed`/`absolute` utilities (this caused a 16px mobile overflow once).
+  Fonts: Bricolage Grotesque (`--font-display`) + Hanken Grotesk (`--font-body`) via `next/font/google`.
+  **Hanken is loaded without an explicit `weight` list** — a weight array breaks Turbopack dev with
+  "Can't resolve @vercel/turbopack-next/internal/font/google/font" (every page 500s; prod build is fine).
+  `components/BottomNav.tsx` is now the whole responsive shell: floating glass sidebar >= 1024px, floating
+  bottom bar + "More" sheet below. Left padding (296px) comes from a `<style>` tag the nav renders, so it
+  only applies on pages that show the nav. Mobile bottom room still comes from each page's `pb-24`.
+  The user chip shows "Owner"/"Staff" (the nav only gets `role`, not the name). Employees on mobile get
+  Daily Entry, My Expenses and a Sign out tab (no More). `public/sw.js` needed no change: fonts under
+  `/_next/static/media/` are already cache-first.
+- **9b (screen):** `app/dashboard/DashboardClient.tsx` rebuilt to the Figma layout. `GET /api/dashboard`
+  adds `dailyRevenue` (one `{date, amount}` per day; shift cash+bank only — no payouts or bookings, so its
+  sum equals the Booth sales row). Attendance cells come from the existing `/api/attendance` (the
+  dashboard API only has counts). A module-level per-month cache shows revisited months instantly.
+  Omitted because the API has no data for them: the "vs last month" delta chip, the per-person owed-to-staff
+  breakdown, and an "expected payout" figure in the rent alert. "Empty month" ignores depreciation (it
+  accrues every month); it means no revenue and no cash expenses.
+- Verified in real Chrome against dev and prod builds at 1440/1024/390/360px for every screen, both roles:
+  no overflow, no console errors, nav/More sheet/month switching/empty state/role gating all pass.
+  Not verified: real-phone check, offline font load, PWA install with the new shell.
+- Lint: `eslint` still reports pre-existing `react-hooks/set-state-in-effect` errors in the data-fetch
+  effects of the screens (including the dashboard) plus one unused var in `AttendanceClient`. Not new.
 
 ### In progress
 - Finance-v2: Chunks 0–4 done. Chunks 4 and 5a are pushed; 5b is uncommitted. Remaining finance-v2 pieces from the
