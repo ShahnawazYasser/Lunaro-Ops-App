@@ -183,7 +183,11 @@ Danger:         #C45A4A
 - Mobile-first for employee-facing screens (they fill this in on their
   phones at the booth). Desktop-friendly for owner dashboard/attendance
   views, which are denser.
-- System UI / Segoe UI / system sans font stack — no custom font loading.
+- System UI / Segoe UI / system sans font stack as the fallback — no runtime
+  font requests. **Exception (Chunk 9, dashboard redesign):** Bricolage
+  Grotesque (`--font-display`) and Hanken Grotesk (`--font-body`) are loaded
+  via `next/font/google` in `app/layout.tsx` (self-hosted at build time, so
+  still no runtime request). Don't add any other custom fonts.
 - Currency always formatted as `PKR 1,200` — never `$`.
 - Large touch targets, plain-language labels. **The employees using this
   are not highly technical — avoid jargon.** Don't say "variance" or
