@@ -1300,12 +1300,14 @@ as prior phases). `bookings` confirmed empty and both test months'
 ### In progress
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.
-- Chunk 10 is committed on `develop` only (Vercel preview). It is NOT on `master`/production until
-  merged; the browser/real-phone pass described under Chunk 10 is still owed before that merge.
+- Chunk 10 is **live** (merged to `master` as `ed37e69`, 2026-11-12; Vercel deployed it on push). Read-only smoke test
+  against production passed: every owner page 200, `/api/draws` and `/api/recurring` 403 for an employee and their
+  pages redirect to `/entry`, dashboard returns `ownerDraws: 0`, expenses list still 200. The browser click-through
+  of the new screens (and the `defer`-touched ones) described under Chunk 10 is still owed — it was never done
+  in a real browser, and no write test was run against production.
 - Phases A–F deployed — confirmed 2026-09-20: `master` HEAD (`ef47db1`)
-  matched Vercel's latest READY production deployment. `master` has since moved on
-  (Chunks 5–9 and shift expense categories, HEAD `4798bfc` at the start of Chunk 10);
-  the live deployment commit was not re-checked (Vercel CLI/MCP auth was broken that session).
+  matched Vercel's latest READY production deployment. Vercel CLI/MCP auth is broken, so the live commit is
+  inferred from behaviour (the Chunk 10 routes went from 404 to 401 after the push), not read from Vercel.
 
 ### Known issues
 - None. The Phase D schema-rename-vs-deployed-code mismatch flagged after
