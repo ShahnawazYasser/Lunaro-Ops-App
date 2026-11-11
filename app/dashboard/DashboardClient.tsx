@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import { cx } from "@/components/cx";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ interface DashboardResponse {
   daysInMonth: number;
   rentCoverage: RentCoverageItem[];
   dailyRevenue: DailyRevenue[];
+  ownerDraws: number;
 }
 
 // Per-day attendance comes from the existing /api/attendance route (same
@@ -349,7 +351,7 @@ export default function DashboardClient() {
     }
   }, []);
 
-  useEffect(() => { void fetchMonth(month); }, [month, fetchMonth]);
+  useEffect(() => defer(() => { void fetchMonth(month); }), [month, fetchMonth]);
 
   const cached = monthCache.get(month);
   const data = cached?.dashboard ?? null;
@@ -520,6 +522,11 @@ export default function DashboardClient() {
                       <p className="mt-2 font-display text-[18px] font-bold leading-[26px] tracking-[-0.01em] lg:mt-3 lg:text-[30px] lg:leading-[34px] lg:tracking-[-0.015em]">
                         {pkr(data.owedToEmployees)}
                       </p>
+                      {data.ownerDraws > 0 && (
+                        <p className="mt-2 text-xs text-text-muted">
+                          Owner draws {pkr(data.ownerDraws)} · not in profit
+                        </p>
+                      )}
                     </Glass>
                     <Glass className="p-5">
                       <h2 className="text-sm font-semibold lg:text-base lg:leading-[22px]">

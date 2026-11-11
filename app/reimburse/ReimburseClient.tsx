@@ -14,6 +14,7 @@ import MonthSwitcher from "@/components/MonthSwitcher";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { EMPLOYEE_CATEGORIES, type EmployeeCategory } from "@/lib/categories";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ export default function ReimburseClient({ user, venues }: Props) {
     }
   }, [filterMonth, user.id]);
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
 
   const handleSubmit = async () => {
     setSubmitAttempted(true);
@@ -318,7 +319,7 @@ export default function ReimburseClient({ user, venues }: Props) {
               onPrev={() => setFilterMonth(prevMonth)} onNext={() => setFilterMonth(nextMonth)} />
 
             <div className="pt-1 border-t border-border">
-              <span className="text-xs text-text-muted">You're owed: </span>
+              <span className="text-xs text-text-muted">You&apos;re owed: </span>
               <span className={`text-sm font-semibold ${youreOwed > 0 ? "text-gold" : "text-text-muted"}`}>
                 {pkr(youreOwed)}
               </span>

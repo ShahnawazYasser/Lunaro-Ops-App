@@ -11,6 +11,7 @@ import FormField, { MoneyField, InputStyles } from "@/components/FormField";
 import SectionLabel from "@/components/SectionLabel";
 import Sheet from "@/components/Sheet";
 import Toast, { type ToastState } from "@/components/Toast";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export default function PayoutsClient({ user, venues }: Props) {
     }
   }, []);
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
 
   const handleCreate = async () => {
     if (!form.venueId) {

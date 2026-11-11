@@ -9,6 +9,7 @@ import ErrorBanner from "@/components/ErrorBanner";
 import MonthSwitcher from "@/components/MonthSwitcher";
 import Spinner from "@/components/Spinner";
 import { cx } from "@/components/cx";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function dayOfWeek(dateStr: string): string {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function AttendanceClient({ ownerId }: { ownerId: string }) {
+export default function AttendanceClient() {
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -93,7 +94,7 @@ export default function AttendanceClient({ ownerId }: { ownerId: string }) {
     }
   }, []);
 
-  useEffect(() => { void fetchAttendance(month); }, [month, fetchAttendance]);
+  useEffect(() => defer(() => { void fetchAttendance(month); }), [month, fetchAttendance]);
 
   const toggle = async (userId: string, date: string, currentStatus: "present" | "absent" | "future") => {
     if (currentStatus === "future") return;

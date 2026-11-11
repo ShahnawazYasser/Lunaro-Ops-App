@@ -180,6 +180,7 @@ export interface Database {
           related_user_id: string | null;
           shift_entry_id: string | null;
           venue_id: string | null;
+          is_owner_draw: boolean;
           logged_by: string;
           created_at: string;
           updated_at: string;
@@ -197,6 +198,7 @@ export interface Database {
           related_user_id?: string | null;
           shift_entry_id?: string | null;
           venue_id?: string | null;
+          is_owner_draw?: boolean;
           logged_by: string;
           created_at?: string;
           updated_at?: string;
@@ -214,6 +216,7 @@ export interface Database {
           related_user_id?: string | null;
           shift_entry_id?: string | null;
           venue_id?: string | null;
+          is_owner_draw?: boolean;
           logged_by?: string;
           updated_at?: string;
         };

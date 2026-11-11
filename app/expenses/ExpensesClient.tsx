@@ -13,6 +13,7 @@ import FormField, { MoneyField, InputStyles } from "@/components/FormField";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { CATEGORIES, type Category } from "@/lib/categories";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -172,7 +173,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
     }
   }, [filterMonth, filterPaidBy]);
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
 
   const visibleRows = filterCategory === "all" ? rows : rows.filter((r) => r.category === filterCategory);
 

@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
   let query = supabaseAdmin
     .from("expenses")
     .select(SELECT)
+    .eq("is_owner_draw", false) // draws live on /api/draws, never in the expense list
     .gte("expense_date", startDate)
     .lte("expense_date", endDate)
     .order("expense_date", { ascending: false })

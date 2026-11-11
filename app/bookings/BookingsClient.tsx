@@ -19,6 +19,7 @@ import BookingForm, {
   type BookingPayload,
 } from "@/components/BookingForm";
 import type { BookingStatus } from "@/lib/supabase/types";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -127,7 +128,7 @@ export default function BookingsClient({ user }: { user: { id: string; name: str
     }
   }, []);
 
-  useEffect(() => { void fetchList(filter); }, [filter, fetchList]);
+  useEffect(() => defer(() => { void fetchList(filter); }), [filter, fetchList]);
 
   const handleCreate = async (payload: BookingPayload) => {
     setCreating(true);

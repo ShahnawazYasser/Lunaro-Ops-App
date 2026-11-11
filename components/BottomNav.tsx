@@ -73,6 +73,18 @@ const IconAssets = () => (
     <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
   </Icon>
 );
+const IconRecurring = () => (
+  <Icon>
+    <path d="M20 7H8a4 4 0 00-4 4v1M4 17h12a4 4 0 004-4v-1" />
+    <path d="M17 4l3 3-3 3M7 14l-3 3 3 3" />
+  </Icon>
+);
+const IconDraws = () => (
+  <Icon>
+    <path d="M12 3v12M7.5 10.5L12 15l4.5-4.5" />
+    <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+  </Icon>
+);
 const IconAttendance = () => (
   <Icon>
     <circle cx="9" cy="8" r="3.5" />
@@ -112,6 +124,8 @@ const OWNER_MAIN: NavItem[] = [
   { href: "/bookings", label: "Bookings", icon: <IconBookings /> },
   { href: "/payouts", label: "Payouts", icon: <IconPayouts /> },
   { href: "/assets", label: "Assets", icon: <IconAssets /> },
+  { href: "/recurring", label: "Recurring", icon: <IconRecurring /> },
+  { href: "/draws", label: "Owner Draws", icon: <IconDraws /> },
 ];
 const OWNER_SECONDARY: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: <IconAttendance /> },

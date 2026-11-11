@@ -18,6 +18,7 @@ import ShiftEntryForm, {
   type ShiftEntryPayload,
   type Venue,
 } from "@/components/ShiftEntryForm";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,7 +178,7 @@ export default function EntriesClient({ venues }: Props) {
     }
   }, []);
 
-  useEffect(() => { void fetchEntries(month); }, [month, fetchEntries]);
+  useEffect(() => defer(() => { void fetchEntries(month); }), [month, fetchEntries]);
 
   const toggleExpanded = (id: string) => {
     setExpandedId((cur) => (cur === id ? null : id));

@@ -10,6 +10,7 @@ import EmptyState from "@/components/EmptyState";
 import FormField, { MoneyField, InputStyles } from "@/components/FormField";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
+import { defer } from "@/lib/defer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ export default function AssetsClient({ user, venues }: Props) {
     }
   }, []);
 
-  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
 
   const handleSubmit = async () => {
     setSubmitAttempted(true);

@@ -7,5 +7,5 @@ export default async function AttendancePage() {
   if (!session) redirect("/login");
   if (session.role !== "owner") redirect("/entry");
 
-  return <AttendanceClient ownerId={session.userId} />;
+  return <AttendanceClient />;
 }

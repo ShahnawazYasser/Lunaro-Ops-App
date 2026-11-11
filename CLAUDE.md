@@ -238,7 +238,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-10-19 (Chunk 9a/9b, dashboard redesign). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-11-12 (Chunk 10: owner draws, recurring costs, lint clean). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1247,8 +1247,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Verified in real Chrome against dev and prod builds at 1440/1024/390/360px for every screen, both roles:
   no overflow, no console errors, nav/More sheet/month switching/empty state/role gating all pass.
   Not verified: real-phone check, offline font load, PWA install with the new shell.
-- Lint: `eslint` still reports pre-existing `react-hooks/set-state-in-effect` errors in the data-fetch
-  effects of the screens (including the dashboard) plus one unused var in `AttendanceClient`. Not new.
+- Lint: `eslint` reported pre-existing `react-hooks/set-state-in-effect` errors and one unused var — fixed in Chunk 10.
 
 **Shift expense categories (post-Chunk 9)**
 - Expense rows on a shift entry (employee `/entry` and the owner's entry edit) now have a category
@@ -1262,12 +1261,51 @@ as prior phases). `bookings` confirmed empty and both test months'
   category was never recorded. `GET /api/entries` returns `category` and the entries detail shows it.
 - Verified: RPC in a rolled-back transaction; API 400s; UI payload via an intercepted submit (nothing written).
 
+**Chunk 10 — Owner draws, recurring costs, lint cleanup (after shift expense categories)**
+- **Owner draws** (`/draws`, owner-only; `GET/POST /api/draws`, `DELETE /api/draws/[id]`). A draw is a row in
+  `expenses` with `is_owner_draw = true`, category `'Owner Draw'`, company-paid (the flag column already existed
+  from `migration_finance_v2.sql`). **Permanent rule: draws are NOT business costs.** Every P&L query excludes them:
+  `GET /api/dashboard` filters `is_owner_draw = false` on its expense query (so `totalExpenses`, `netProfit` and
+  `expensesByCategory` never include a draw) and reports them separately as `ownerDraws`; `GET /api/expenses`
+  filters them out of the list. The dashboard shows "Owner draws PKR X · not in profit" under Owed to staff, only
+  when non-zero. `'Owner Draw'` is deliberately NOT in `lib/categories.ts`, so `/api/expenses` can't create one.
+  `DELETE /api/draws/[id]` only matches rows flagged `is_owner_draw`. Any new query over `expenses` must decide
+  explicitly whether draws belong in it (almost always: no). `lib/supabase/types.ts` gained `is_owner_draw`.
+- **Recurring costs** (`/recurring`, owner-only; `GET/POST /api/recurring`, `PATCH/DELETE /api/recurring/[id]`).
+  Add, edit (full-screen `Sheet`), pause/resume (`active`), delete. They are templates, **not** expenses: nothing
+  generates `expenses` rows from them (that was explicitly not built). Their only consumer is still the dashboard
+  rent-coverage warning (active + venue-linked). `due_day` (1–28, not null) is kept in the form as "Usually
+  around day of the month" — it is informational; rent still isn't due on a fixed day (Chunk 4 rule).
+- Nav: owner list gains Recurring and Owner Draws (they sit in the mobile "More" sheet; the first three tabs
+  are unchanged).
+- **Lint is clean** (`npx eslint .` → zero). The 8 data-fetch effects used `useEffect(() => { void fetchX(); })`
+  where `fetchX` sets loading state first, tripping `react-hooks/set-state-in-effect`. They now go through
+  `lib/defer.ts` (`useEffect(() => defer(() => { void fetchX(); }), [deps])`) — runs on the next tick and
+  cancels on cleanup. This is a scheduling fix, not a data-layer rewrite: stale-response races that existed
+  before still exist. New screens (`/draws`, `/recurring`) use effect-local fetches with a `cancelled` flag and
+  set loading in the event handlers instead. Also removed the unused `ownerId` prop on `AttendanceClient` and
+  escaped an apostrophe in `ReimburseClient`.
+- Verified: `tsc`, `eslint`, `npm run build` clean. The draw-exclusion math and the `recurring_expenses` check
+  constraints were verified in a Postgres transaction that always rolls back (draws 5,000 stayed out of
+  expenses 1,000; `due_day` 29 and `amount` 0 rejected; DB confirmed unchanged afterward: 172 expenses, 0 draws,
+  2 recurring). **Not verified:** the new routes and screens over HTTP and in a browser — the end-to-end API
+  test (which writes rows to the shared production DB) was blocked by the permission classifier, and was not
+  worked around. Still owed before merging to `master`: log in as Owner on the `develop` preview, add + delete a
+  draw, confirm the dashboard profit does not move, add/pause/edit/delete a recurring cost, and click through all
+  screens that got the `defer` change (assets, attendance, bookings, dashboard, entries, expenses, payouts,
+  reimburse) in both roles.
+- `supabase_schema.sql` is stale for the finance-v2 tables (`assets`, `payout_cycles`, `recurring_expenses`,
+  `expenses.is_owner_draw`, etc.): they live only in the `migration_finance_v2*.sql` files. Not fixed here.
+
 ### In progress
-- Finance-v2: Chunks 0–4 done. Chunks 4 and 5a are pushed; 5b is uncommitted. Remaining finance-v2 pieces from the
-  Chunk 1 schema — recurring-expenses UI and owner draws — are not built.
-  Wait for an explicit prompt before starting them.
+- Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
+  Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.
+- Chunk 10 is committed on `develop` only (Vercel preview). It is NOT on `master`/production until
+  merged; the browser/real-phone pass described under Chunk 10 is still owed before that merge.
 - Phases A–F deployed — confirmed 2026-09-20: `master` HEAD (`ef47db1`)
-  matched Vercel's latest READY production deployment.
+  matched Vercel's latest READY production deployment. `master` has since moved on
+  (Chunks 5–9 and shift expense categories, HEAD `4798bfc` at the start of Chunk 10);
+  the live deployment commit was not re-checked (Vercel CLI/MCP auth was broken that session).
 
 ### Known issues
 - None. The Phase D schema-rename-vs-deployed-code mismatch flagged after
@@ -1283,7 +1321,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 
 ---
 
-## Architecture Summary (as of Phase F)
+## Architecture Summary (as of Chunk 10)
 
 - **Framework**: Next.js 16 (App Router), TypeScript strict (`npx tsc --noEmit`
   must be zero errors), Tailwind v4. Hosted on Vercel, deployed from the
@@ -1319,7 +1357,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - **Screens**: `/login` (PIN), `/entry` (employee shift log) + `/reimburse`
   ("My Expenses", employee's own money-out log) + `/expenses` (owner's full
   money-out screen — log, filter, mark-paid, delete) + `/bookings` (owner's
-  paid client-event log — create, edit, cancel, delete), `/attendance` +
+  paid client-event log — create, edit, cancel, delete), `/assets`, `/payouts`, `/recurring` (recurring costs), `/draws` (owner draws), `/attendance` +
   `/dashboard` + `/entries` (owner-only). `components/BottomNav.tsx`
   renders the role-appropriate tab set plus sign-out on every authenticated
   screen. No accounting jargon in any screen's copy — see the vocabulary

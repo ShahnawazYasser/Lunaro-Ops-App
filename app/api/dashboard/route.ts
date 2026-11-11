@@ -83,6 +83,9 @@ export interface DashboardResponse {
   // entries. Shift entries only — payouts and bookings are NOT in this series,
   // so its sum equals the booth-sales share of totalRevenue.
   dailyRevenue: DailyRevenue[];
+  // Owner draws for the month (money pulled for personal use). NOT in
+  // totalExpenses or netProfit — shown separately for the cash trail.
+  ownerDraws: number;
 }
 
 export interface DailyRevenue {
@@ -123,6 +126,7 @@ export async function GET(request: NextRequest) {
     { data: depreciationRows, error: depErr },
     { data: recurringExpenses, error: recurErr },
     { data: payoutCycles, error: payoutErr },
+    { data: drawRows, error: drawErr },
   ] = await Promise.all([
     // Shift entries for the month
     supabaseAdmin
@@ -140,6 +144,7 @@ export async function GET(request: NextRequest) {
     supabaseAdmin
       .from("expenses")
       .select("amount, category, paid_by, reimbursement_status, shift_entry_id, venue_id")
+      .eq("is_owner_draw", false) // owner draws are not business costs
       .gte("expense_date", startDate)
       .lte("expense_date", endDate),
 
@@ -189,6 +194,14 @@ export async function GET(request: NextRequest) {
     supabaseAdmin
       .from("payout_cycles")
       .select("venue_id, payout_due, gross_amount, rent_deducted, received_on"),
+
+    // Owner draws: excluded from the expense query above, summed here.
+    supabaseAdmin
+      .from("expenses")
+      .select("amount")
+      .eq("is_owner_draw", true)
+      .gte("expense_date", startDate)
+      .lte("expense_date", endDate),
   ]);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
@@ -200,6 +213,7 @@ export async function GET(request: NextRequest) {
   if (depErr) return NextResponse.json({ error: depErr.message }, { status: 500 });
   if (recurErr) return NextResponse.json({ error: recurErr.message }, { status: 500 });
   if (payoutErr) return NextResponse.json({ error: payoutErr.message }, { status: 500 });
+  if (drawErr) return NextResponse.json({ error: drawErr.message }, { status: 500 });
 
   const shiftRows = shifts ?? [];
   const cycleRows = payoutCycles ?? [];
@@ -380,6 +394,7 @@ export async function GET(request: NextRequest) {
     daysInMonth,
     rentCoverage,
     dailyRevenue,
+    ownerDraws: (drawRows ?? []).reduce((sum, r) => sum + r.amount, 0),
   };
 
   return NextResponse.json(response);
