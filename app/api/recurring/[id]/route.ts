@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { isCategory } from "@/lib/categories";
+import { int, money, str } from "@/lib/validate";
 import type { Database } from "@/lib/supabase/types";
 
 export const preferredRegion = "sin1";
@@ -24,9 +25,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -40,10 +40,11 @@ export async function PATCH(
   const update: RecurringUpdate = {};
 
   if (body.name !== undefined) {
-    if (typeof body.name !== "string" || !body.name.trim()) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 });
+    const cleanName = str(body.name, 120);
+    if (!cleanName) {
+      return NextResponse.json({ error: "Name is required (max 120 characters)" }, { status: 400 });
     }
-    update.name = body.name.trim();
+    update.name = cleanName;
   }
   if (body.category !== undefined) {
     if (!isCategory(body.category)) {
@@ -52,13 +53,14 @@ export async function PATCH(
     update.category = body.category;
   }
   if (body.amount !== undefined) {
-    if (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
-      return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
+    const cleanAmount = money(body.amount, 1, 5_000_000);
+    if (cleanAmount === null) {
+      return NextResponse.json({ error: "Amount must be from 1 to 5,000,000" }, { status: 400 });
     }
-    update.amount = body.amount;
+    update.amount = cleanAmount;
   }
   if (body.dueDay !== undefined) {
-    if (!Number.isInteger(body.dueDay) || body.dueDay < 1 || body.dueDay > 28) {
+    if (int(body.dueDay, 1, 28) === null) {
       return NextResponse.json({ error: "Day of month must be between 1 and 28" }, { status: 400 });
     }
     update.due_day = body.dueDay;
@@ -82,7 +84,7 @@ export async function PATCH(
     .select("id")
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
   if (!data) return NextResponse.json({ error: "Recurring cost not found" }, { status: 404 });
   return NextResponse.json({ ok: true, id });
 }
@@ -92,9 +94,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -105,7 +106,7 @@ export async function DELETE(
     .select("id")
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
   if (!data) return NextResponse.json({ error: "Recurring cost not found" }, { status: 404 });
   return NextResponse.json({ ok: true, id });
 }

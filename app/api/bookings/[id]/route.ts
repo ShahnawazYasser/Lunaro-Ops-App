@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
+import { isIsoDate, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { BookingStatus } from "@/lib/supabase/types";
 
 export const preferredRegion = "sin1";
+
+// Optional text field: undefined/null → "", too long or not a string → undefined (invalid).
+function optStr(v: unknown, maxLen: number): string | undefined {
+  if (v === undefined || v === null) return "";
+  return str(v, maxLen) ?? undefined;
+}
 
 const VALID_STATUSES: BookingStatus[] = ["upcoming", "completed", "cancelled"];
 
@@ -27,9 +34,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -40,19 +46,29 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const clientName = body.clientName?.trim();
+  const clientName = str(body.clientName ?? "", 120);
   if (!clientName) {
-    return NextResponse.json({ error: "Client name is required" }, { status: 400 });
+    return NextResponse.json({ error: "Client name is required (max 120 characters)" }, { status: 400 });
   }
 
-  const amountCharged = body.amountCharged;
-  if (typeof amountCharged !== "number" || !Number.isFinite(amountCharged) || amountCharged <= 0) {
-    return NextResponse.json({ error: "Amount charged must be greater than 0" }, { status: 400 });
+  const amountCharged = money(body.amountCharged, 1, 5_000_000);
+  if (amountCharged === null) {
+    return NextResponse.json({ error: "Amount charged must be from 1 to 5,000,000" }, { status: 400 });
   }
 
   const eventDate = body.eventDate;
-  if (!eventDate || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+  if (!isIsoDate(eventDate)) {
     return NextResponse.json({ error: "A valid event date is required" }, { status: 400 });
+  }
+
+  const eventName = optStr(body.eventName, 120);
+  const pkg = optStr(body.package, 120);
+  const notes = optStr(body.notes, 1000);
+  if (eventName === undefined || pkg === undefined || notes === undefined) {
+    return NextResponse.json({ error: "Event name, package or notes is too long" }, { status: 400 });
+  }
+  if (body.advanceDate && !isIsoDate(body.advanceDate)) {
+    return NextResponse.json({ error: "Advance date isn't a valid date" }, { status: 400 });
   }
 
   const status = body.status ?? "upcoming";
@@ -69,8 +85,8 @@ export async function PUT(
       { status: 400 }
     );
   }
-  if (hasAdvanceAmount && (typeof body.advanceAmount !== "number" || body.advanceAmount <= 0)) {
-    return NextResponse.json({ error: "Advance amount must be greater than 0" }, { status: 400 });
+  if (hasAdvanceAmount && money(body.advanceAmount, 1, 5_000_000) === null) {
+    return NextResponse.json({ error: "Advance amount must be from 1 to 5,000,000" }, { status: 400 });
   }
 
   const hasFinalAmount = body.finalAmount != null;
@@ -81,8 +97,11 @@ export async function PUT(
       { status: 400 }
     );
   }
-  if (hasFinalAmount && (typeof body.finalAmount !== "number" || body.finalAmount <= 0)) {
-    return NextResponse.json({ error: "Final payment amount must be greater than 0" }, { status: 400 });
+  if (body.finalDate && !isIsoDate(body.finalDate)) {
+    return NextResponse.json({ error: "Final payment date isn't a valid date" }, { status: 400 });
+  }
+  if (hasFinalAmount && money(body.finalAmount, 1, 5_000_000) === null) {
+    return NextResponse.json({ error: "Final payment amount must be from 1 to 5,000,000" }, { status: 400 });
   }
 
   const advanceAmount = hasAdvanceAmount ? (body.advanceAmount as number) : null;
@@ -101,18 +120,18 @@ export async function PUT(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
   const { error: updateError } = await supabaseAdmin
     .from("bookings")
     .update({
       client_name: clientName,
-      event_name: body.eventName?.trim() || null,
-      package: body.package?.trim() || null,
+      event_name: eventName || null,
+      package: pkg || null,
       amount_charged: amountCharged,
       event_date: eventDate,
-      notes: body.notes?.trim() || null,
+      notes: notes || null,
       advance_amount: advanceAmount,
       advance_date: hasAdvanceDate ? body.advanceDate : null,
       final_amount: finalAmount,
@@ -121,7 +140,7 @@ export async function PUT(
     })
     .eq("id", id);
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (updateError) return dbError(updateError);
 
   return NextResponse.json({ ok: true, id });
 }
@@ -132,9 +151,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -144,11 +162,11 @@ export async function DELETE(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
   const { error: deleteError } = await supabaseAdmin.from("bookings").delete().eq("id", id);
-  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (deleteError) return dbError(deleteError);
 
   return NextResponse.json({ ok: true, id });
 }

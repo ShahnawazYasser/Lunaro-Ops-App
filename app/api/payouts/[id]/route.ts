@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
+import { isIsoDate, money } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 
 export const preferredRegion = "sin1";
 
 type PayoutCycleUpdate = Database["public"]["Tables"]["payout_cycles"]["Update"];
-
-function isValidDate(s: unknown): s is string {
-  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
 
 interface PayoutPatchBody {
   grossAmount?: number | null;
@@ -28,9 +25,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -47,29 +43,29 @@ export async function PATCH(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Payout cycle not found" }, { status: 404 });
 
   const update: PayoutCycleUpdate = {};
 
   if ("grossAmount" in body) {
     const grossAmount = body.grossAmount;
-    if (grossAmount != null && (typeof grossAmount !== "number" || !Number.isFinite(grossAmount) || grossAmount < 0)) {
-      return NextResponse.json({ error: "Gross amount can't be negative" }, { status: 400 });
+    if (grossAmount != null && money(grossAmount, 0, 50_000_000) === null) {
+      return NextResponse.json({ error: "Gross amount must be from 0 to 50,000,000" }, { status: 400 });
     }
     update.gross_amount = grossAmount ?? null;
   }
 
   if ("rentDeducted" in body) {
     const rentDeducted = body.rentDeducted;
-    if (typeof rentDeducted !== "number" || !Number.isFinite(rentDeducted) || rentDeducted < 0) {
-      return NextResponse.json({ error: "Rent deducted can't be negative" }, { status: 400 });
+    if (money(rentDeducted, 0, 5_000_000) === null) {
+      return NextResponse.json({ error: "Rent deducted must be from 0 to 5,000,000" }, { status: 400 });
     }
     update.rent_deducted = rentDeducted;
   }
 
   if ("payoutDue" in body) {
-    if (body.payoutDue != null && !isValidDate(body.payoutDue)) {
+    if (body.payoutDue != null && !isIsoDate(body.payoutDue)) {
       return NextResponse.json({ error: "Payout date must be a valid date" }, { status: 400 });
     }
     update.payout_due = body.payoutDue ?? null;
@@ -93,12 +89,12 @@ export async function PATCH(
       );
     }
     if (!receivedOnIsNull) {
-      if (!isValidDate(body.receivedOn)) {
+      if (!isIsoDate(body.receivedOn)) {
         return NextResponse.json({ error: "Received date must be a valid date" }, { status: 400 });
       }
       const receivedAmount = body.receivedAmount;
-      if (typeof receivedAmount !== "number" || !Number.isFinite(receivedAmount) || receivedAmount <= 0) {
-        return NextResponse.json({ error: "Received amount must be greater than 0" }, { status: 400 });
+      if (money(receivedAmount, 1, 50_000_000) === null) {
+        return NextResponse.json({ error: "Received amount must be from 1 to 50,000,000" }, { status: 400 });
       }
     }
     update.received_on = body.receivedOn ?? null;
@@ -114,7 +110,7 @@ export async function PATCH(
     .update(update)
     .eq("id", id);
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (updateError) return dbError(updateError);
 
   return NextResponse.json({ ok: true, id });
 }

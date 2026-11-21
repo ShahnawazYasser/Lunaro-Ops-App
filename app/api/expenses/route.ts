@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireSession, dbError, fail } from "@/lib/api";
+import { isIsoDate, isMonth, isUuid, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange } from "@/lib/dates";
 import { isCategory, isEmployeeCategory } from "@/lib/categories";
@@ -34,15 +35,18 @@ const SELECT = `
 // employee-paid rows, whatever the query params say — enforced here, not in
 // the client.
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
   const paidBy = searchParams.get("paidBy");
   const userId = searchParams.get("userId");
+  if (userId !== null && userId !== "all" && !isUuid(userId)) {
+    return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
+  }
 
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+  if (!month || !isMonth(month)) {
     return NextResponse.json({ error: "Invalid month format (expected YYYY-MM)" }, { status: 400 });
   }
   if (paidBy !== null && paidBy !== "all" && paidBy !== "company" && paidBy !== "employee") {
@@ -69,7 +73,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
 
   return NextResponse.json({ expenses: data ?? [] });
 }
@@ -93,8 +97,8 @@ interface ExpenseBody {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   let body: ExpenseBody;
   try {
@@ -105,11 +109,24 @@ export async function POST(request: NextRequest) {
 
   const { category, amount, expenseDate, description, venueId, receiptPath } = body;
 
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-    return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
+  const cleanAmount = money(amount, 1, 500_000);
+  if (cleanAmount === null) {
+    return NextResponse.json({ error: "Amount must be from 1 to 500,000" }, { status: 400 });
   }
-  if (!expenseDate || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
+  if (!isIsoDate(expenseDate)) {
     return NextResponse.json({ error: "A valid date is required" }, { status: 400 });
+  }
+  const cleanDescription = description === undefined || description === null ? "" : str(description, 200);
+  if (cleanDescription === null) {
+    return NextResponse.json({ error: "Description is too long (max 200 characters)" }, { status: 400 });
+  }
+  if (venueId !== undefined && venueId !== null && (typeof venueId !== "string" || venueId.length > 40)) {
+    return NextResponse.json({ error: "Invalid venue" }, { status: 400 });
+  }
+  for (const id of [body.payerUserId, body.relatedUserId]) {
+    if (id !== undefined && id !== null && !isUuid(id)) {
+      return NextResponse.json({ error: "Invalid person selected" }, { status: 400 });
+    }
   }
 
   const isOwner = session.role === "owner";
@@ -175,8 +192,8 @@ export async function POST(request: NextRequest) {
     .insert({
       expense_date: expenseDate,
       category,
-      amount,
-      description: description?.trim() || null,
+      amount: cleanAmount,
+      description: cleanDescription || null,
       receipt_url: receiptStored,
       paid_by: paidBy,
       payer_user_id: payerUserId,
@@ -189,7 +206,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+    return error ? dbError(error) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
 
   return NextResponse.json({ ok: true, id: data.id }, { status: 201 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -11,9 +11,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -24,10 +23,10 @@ export async function DELETE(
     .eq("is_owner_draw", true)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Draw not found" }, { status: 404 });
 
   const { error } = await supabaseAdmin.from("expenses").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
   return NextResponse.json({ ok: true, id });
 }

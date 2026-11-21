@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError, fail } from "@/lib/api";
+import { isIsoDate, money } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -16,22 +17,17 @@ const SELECT = `
   received_on, received_amount, venues(name)
 `;
 
-function isValidDate(s: unknown): s is string {
-  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
-
 // ── GET /api/payouts ─────────────────────────────────────────────────────
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { data, error } = await supabaseAdmin
     .from("payout_cycles")
     .select(SELECT)
     .order("cycle_start", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
 
   return NextResponse.json({ cycles: data ?? [] });
 }
@@ -47,9 +43,8 @@ interface PayoutCycleBody {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   let body: PayoutCycleBody;
   try {
@@ -62,10 +57,10 @@ export async function POST(request: NextRequest) {
   if (!venueId) {
     return NextResponse.json({ error: "Venue is required" }, { status: 400 });
   }
-  if (!isValidDate(body.cycleStart)) {
+  if (!isIsoDate(body.cycleStart)) {
     return NextResponse.json({ error: "A valid cycle start date is required" }, { status: 400 });
   }
-  if (!isValidDate(body.cycleEnd)) {
+  if (!isIsoDate(body.cycleEnd)) {
     return NextResponse.json({ error: "A valid cycle end date is required" }, { status: 400 });
   }
   if (body.cycleEnd < body.cycleStart) {
@@ -73,16 +68,16 @@ export async function POST(request: NextRequest) {
   }
 
   const grossAmount = body.grossAmount;
-  if (grossAmount != null && (typeof grossAmount !== "number" || !Number.isFinite(grossAmount) || grossAmount < 0)) {
-    return NextResponse.json({ error: "Gross amount can't be negative" }, { status: 400 });
+  if (grossAmount != null && money(grossAmount, 0, 50_000_000) === null) {
+    return NextResponse.json({ error: "Gross amount must be from 0 to 50,000,000" }, { status: 400 });
   }
 
-  const rentDeducted = body.rentDeducted ?? 0;
-  if (typeof rentDeducted !== "number" || !Number.isFinite(rentDeducted) || rentDeducted < 0) {
-    return NextResponse.json({ error: "Rent deducted can't be negative" }, { status: 400 });
+  const rentDeducted = money(body.rentDeducted ?? 0, 0, 5_000_000);
+  if (rentDeducted === null) {
+    return NextResponse.json({ error: "Rent deducted must be from 0 to 5,000,000" }, { status: 400 });
   }
 
-  if (body.payoutDue != null && !isValidDate(body.payoutDue)) {
+  if (body.payoutDue != null && !isIsoDate(body.payoutDue)) {
     return NextResponse.json({ error: "Payout date must be a valid date" }, { status: 400 });
   }
 
@@ -100,7 +95,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+    return error ? dbError(error) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
 
   return NextResponse.json({ ok: true, id: data.id }, { status: 201 });

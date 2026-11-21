@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, requireSession, dbError } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -18,9 +18,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -42,7 +41,7 @@ export async function PATCH(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Expense not found" }, { status: 404 });
 
   if (existing.paid_by !== "employee") {
@@ -57,7 +56,7 @@ export async function PATCH(
     .update({ reimbursement_status: status })
     .eq("id", id);
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (updateError) return dbError(updateError);
 
   return NextResponse.json({ ok: true, id, reimbursementStatus: status });
 }
@@ -73,8 +72,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -84,7 +83,7 @@ export async function DELETE(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (fetchError) return dbError(fetchError);
   if (!existing) return NextResponse.json({ error: "Expense not found" }, { status: 404 });
 
   if (existing.shift_entry_id) {
@@ -113,7 +112,7 @@ export async function DELETE(
   }
 
   const { error: deleteError } = await supabaseAdmin.from("expenses").delete().eq("id", id);
-  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (deleteError) return dbError(deleteError);
 
   return NextResponse.json({ ok: true, id });
 }

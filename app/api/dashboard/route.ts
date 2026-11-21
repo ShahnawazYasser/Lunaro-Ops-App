@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
+import { isMonth } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange, todayInKarachi } from "@/lib/dates";
 import { deriveAttendance } from "@/lib/attendance";
@@ -95,14 +96,13 @@ export interface DailyRevenue {
 
 // GET /api/dashboard?month=2026-06
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
 
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+  if (!month || !isMonth(month)) {
     return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
   }
 
@@ -204,16 +204,16 @@ export async function GET(request: NextRequest) {
       .lte("expense_date", endDate),
   ]);
 
-  if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
-  if (expErr) return NextResponse.json({ error: expErr.message }, { status: 500 });
-  if (venueErr) return NextResponse.json({ error: venueErr.message }, { status: 500 });
-  if (bookingErr) return NextResponse.json({ error: bookingErr.message }, { status: 500 });
-  if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 });
-  if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
-  if (depErr) return NextResponse.json({ error: depErr.message }, { status: 500 });
-  if (recurErr) return NextResponse.json({ error: recurErr.message }, { status: 500 });
-  if (payoutErr) return NextResponse.json({ error: payoutErr.message }, { status: 500 });
-  if (drawErr) return NextResponse.json({ error: drawErr.message }, { status: 500 });
+  if (shiftErr) return dbError(shiftErr);
+  if (expErr) return dbError(expErr);
+  if (venueErr) return dbError(venueErr);
+  if (bookingErr) return dbError(bookingErr);
+  if (empErr) return dbError(empErr);
+  if (overErr) return dbError(overErr);
+  if (depErr) return dbError(depErr);
+  if (recurErr) return dbError(recurErr);
+  if (payoutErr) return dbError(payoutErr);
+  if (drawErr) return dbError(drawErr);
 
   const shiftRows = shifts ?? [];
   const cycleRows = payoutCycles ?? [];

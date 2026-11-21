@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
-import { resolveShiftCategory } from "@/lib/categories";
+import { requireOwner, requireSession, fail, dbError } from "@/lib/api";
+import { parseEntryBody } from "@/lib/entry-input";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
-import { monthRange } from "@/lib/dates";
+import { addDays, monthRange, todayInKarachi } from "@/lib/dates";
+import { isMonth } from "@/lib/validate";
 
 export const preferredRegion = "sin1";
 
-interface ExpenseInput {
-  description: string;
-  amount: number;
-  category?: string;
-}
-
 // GET /api/entries?month=2026-06 — owner-only log of all shift entries
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
 
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-    return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
+  if (!month || !isMonth(month)) {
+    return fail(400, "Invalid month (expected YYYY-MM)");
   }
 
   const { startDate, endDate } = monthRange(month);
@@ -48,43 +42,24 @@ export async function GET(request: NextRequest) {
     .order("entry_date", { ascending: false })
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
 
   return NextResponse.json({ entries: data ?? [] });
 }
 
-interface EntryBody {
-  entryDate: string;
-  clockIn: string | null;
-  clockOut: string | null;
-  venueId: string;
-  eventName: string | null;
-  totalPrints: number;
-  extraPrints: number;
-  systemPrints500: number;
-  systemPrints250: number;
-  freePrints: number;
-  wastePrints: number;
-  // Informational only — never used to compute or validate revenue.
-  priceCharged?: number | null;
-  cashReceived: number;
-  bankReceived: number;
-  expenses: ExpenseInput[];
-}
-
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
-  let body: EntryBody;
+  let raw: unknown;
   try {
-    body = (await request.json()) as EntryBody;
+    raw = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return fail(400, "Invalid request body");
   }
 
+  const parsed = parseEntryBody(raw);
+  if (!parsed.ok) return fail(400, parsed.error);
   const {
     entryDate,
     clockIn,
@@ -101,27 +76,23 @@ export async function POST(request: NextRequest) {
     cashReceived,
     bankReceived,
     expenses,
-  } = body;
+  } = parsed.value;
 
-  if (!entryDate || !venueId) {
-    return NextResponse.json({ error: "Date and venue are required" }, { status: 400 });
+  // Date window (Asia/Karachi). Employees: today or up to 2 days back.
+  // Owner: any past date. Nobody: the future.
+  const today = todayInKarachi();
+  if (entryDate > today) return fail(400, "The date can't be in the future.");
+  if (session.role !== "owner" && entryDate < addDays(today, -2)) {
+    return fail(400, "You can only log today or the last 2 days. Ask the owner to add older entries.");
   }
 
-  if (venueId === "event" && !eventName?.trim()) {
-    return NextResponse.json({ error: "Event name is required" }, { status: 400 });
-  }
-
-  if (
-    priceCharged !== null &&
-    priceCharged !== undefined &&
-    (typeof priceCharged !== "number" || !Number.isFinite(priceCharged) || priceCharged <= 0)
-  ) {
-    return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
-  }
-
-  if ((expenses ?? []).some((e) => resolveShiftCategory(e.category) === null)) {
-    return NextResponse.json({ error: "Pick a valid type for each expense." }, { status: 400 });
-  }
+  const { data: venue, error: venueError } = await supabaseAdmin
+    .from("venues")
+    .select("id")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (venueError) return dbError(venueError);
+  if (!venue) return fail(400, "That venue doesn't exist. Pick one from the list.");
 
   const userId = session.userId;
 
@@ -133,38 +104,33 @@ export async function POST(request: NextRequest) {
   // resubmission for that user+date is permanently rejected. Without it, an
   // upsert on (user_id, entry_date) would silently overwrite the owner's
   // reconciled figures. Owner edits go through PUT, which bypasses this.
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from("shift_entries")
     .select("id, cash_collected, last_edited_by")
     .eq("user_id", userId)
     .eq("entry_date", entryDate)
     .eq("venue_id", venueId)
     .maybeSingle();
+  if (existingError) return dbError(existingError);
 
   if (existing?.cash_collected || existing?.last_edited_by) {
-    return NextResponse.json(
-      {
-        error:
-          "This entry has been finalized by the owner. Contact them to make changes.",
-      },
-      { status: 409 }
-    );
+    return fail(409, "This entry has been finalized by the owner. Contact them to make changes.");
   }
 
   const entryFields = {
     user_id: userId,
     entry_date: entryDate,
     venue_id: venueId,
-    event_name: venueId === "event" ? (eventName ?? null) : null,
-    clock_in: clockIn ?? null,
-    clock_out: clockOut ?? null,
+    event_name: venueId === "event" ? eventName : null,
+    clock_in: clockIn,
+    clock_out: clockOut,
     total_prints: totalPrints,
     extra_prints: extraPrints,
     system_prints_500: systemPrints500,
     system_prints_250: systemPrints250,
     free_prints: freePrints,
     waste_prints: wastePrints,
-    price_charged: priceCharged ?? null,
+    price_charged: priceCharged,
     cash_received: cashReceived,
     bank_received: bankReceived,
     notes: null,
@@ -183,9 +149,7 @@ export async function POST(request: NextRequest) {
       .update(entryFields)
       .eq("id", existing.id);
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
-    }
+    if (updateError) return dbError(updateError);
     entryId = existing.id;
   } else {
     const { data: inserted, error: insertError } = await db
@@ -195,31 +159,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError || !inserted) {
-      return NextResponse.json(
-        { error: insertError?.message ?? "Insert failed" },
-        { status: 500 }
-      );
+      return insertError ? dbError(insertError) : fail(500, "Something went wrong. Try again.", "entry insert returned no row");
     }
     entryId = inserted.id;
   }
 
   // Replace expenses atomically (delete + insert in one DB transaction)
-  const validExpenses = expenses.filter(
-    (e) => typeof e.description === "string" && e.description.trim() && e.amount > 0
-  );
-
   const { error: replaceError } = await supabaseAdmin.rpc("replace_entry_expenses", {
     p_shift_entry_id: entryId,
-    p_expenses: validExpenses.map((e) => ({
-      description: e.description.trim(),
-      amount: e.amount,
-      category: resolveShiftCategory(e.category),
-    })),
+    p_expenses: expenses,
   });
 
-  if (replaceError) {
-    return NextResponse.json({ error: replaceError.message }, { status: 500 });
-  }
+  if (replaceError) return dbError(replaceError);
 
   return NextResponse.json({ ok: true, entryId, updated: isUpdate }, { status: isUpdate ? 200 : 201 });
 }

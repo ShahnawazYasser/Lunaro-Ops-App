@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError } from "@/lib/api";
+import { isIsoDate, isUuid } from "@/lib/validate";
+import { todayInKarachi } from "@/lib/dates";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -12,9 +14,8 @@ interface OverrideBody {
 
 // POST /api/attendance/override
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   let body: OverrideBody;
   try {
@@ -25,8 +26,14 @@ export async function POST(request: NextRequest) {
 
   const { userId, date, setPresent } = body;
 
-  if (!userId || !date || typeof setPresent !== "boolean") {
+  if (!isUuid(userId) || typeof setPresent !== "boolean") {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+  if (!isIsoDate(date)) {
+    return NextResponse.json({ error: "A valid date is required" }, { status: 400 });
+  }
+  if (date > todayInKarachi()) {
+    return NextResponse.json({ error: "You can't mark attendance for a future date" }, { status: 400 });
   }
 
   // Verify the target user is an employee
@@ -54,7 +61,7 @@ export async function POST(request: NextRequest) {
       .update({ is_present: setPresent })
       .eq("id", existing.id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError(error);
   } else {
     const { error } = await supabaseAdmin
       .from("attendance_overrides")
@@ -65,7 +72,7 @@ export async function POST(request: NextRequest) {
         created_by: session.userId,
       });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbError(error);
   }
 
   return NextResponse.json({ ok: true, date, isPresent: setPresent });

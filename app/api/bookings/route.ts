@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError, fail } from "@/lib/api";
+import { isIsoDate, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { todayInKarachi } from "@/lib/dates";
 
 export const preferredRegion = "sin1";
+
+// Optional text field: undefined/null → "", too long or not a string → undefined (invalid).
+function optStr(v: unknown, maxLen: number): string | undefined {
+  if (v === undefined || v === null) return "";
+  return str(v, maxLen) ?? undefined;
+}
 
 // Paid client-event bookings (Phase F). Owner-only, every method.
 //
@@ -33,9 +40,8 @@ function withBalanceDue<T extends BookingRow>(row: T) {
 
 // ── GET /api/bookings?filter=upcoming|past|all ─────────────────────────────
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
   const filter = searchParams.get("filter") ?? "upcoming";
@@ -57,7 +63,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
 
   return NextResponse.json({ bookings: (data ?? []).map((row) => withBalanceDue(row as BookingRow)) });
 }
@@ -75,9 +81,8 @@ interface BookingBody {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   let body: BookingBody;
   try {
@@ -86,19 +91,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const clientName = body.clientName?.trim();
+  const clientName = str(body.clientName ?? "", 120);
   if (!clientName) {
-    return NextResponse.json({ error: "Client name is required" }, { status: 400 });
+    return NextResponse.json({ error: "Client name is required (max 120 characters)" }, { status: 400 });
   }
 
-  const amountCharged = body.amountCharged;
-  if (typeof amountCharged !== "number" || !Number.isFinite(amountCharged) || amountCharged <= 0) {
-    return NextResponse.json({ error: "Amount charged must be greater than 0" }, { status: 400 });
+  const amountCharged = money(body.amountCharged, 1, 5_000_000);
+  if (amountCharged === null) {
+    return NextResponse.json({ error: "Amount charged must be from 1 to 5,000,000" }, { status: 400 });
   }
 
   const eventDate = body.eventDate;
-  if (!eventDate || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+  if (!isIsoDate(eventDate)) {
     return NextResponse.json({ error: "A valid event date is required" }, { status: 400 });
+  }
+
+  const eventName = optStr(body.eventName, 120);
+  const pkg = optStr(body.package, 120);
+  const notes = optStr(body.notes, 1000);
+  if (eventName === undefined || pkg === undefined || notes === undefined) {
+    return NextResponse.json({ error: "Event name, package or notes is too long" }, { status: 400 });
+  }
+  if (body.advanceDate && !isIsoDate(body.advanceDate)) {
+    return NextResponse.json({ error: "Advance date isn't a valid date" }, { status: 400 });
   }
 
   // Advance is a complete amount+date pair or absent entirely.
@@ -110,8 +125,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (hasAdvanceAmount && (typeof body.advanceAmount !== "number" || body.advanceAmount <= 0)) {
-    return NextResponse.json({ error: "Advance amount must be greater than 0" }, { status: 400 });
+  if (hasAdvanceAmount && money(body.advanceAmount, 1, 5_000_000) === null) {
+    return NextResponse.json({ error: "Advance amount must be from 1 to 5,000,000" }, { status: 400 });
   }
 
   const advanceAmount = hasAdvanceAmount ? (body.advanceAmount as number) : null;
@@ -126,11 +141,11 @@ export async function POST(request: NextRequest) {
     .from("bookings")
     .insert({
       client_name: clientName,
-      event_name: body.eventName?.trim() || null,
-      package: body.package?.trim() || null,
+      event_name: eventName || null,
+      package: pkg || null,
       amount_charged: amountCharged,
       event_date: eventDate,
-      notes: body.notes?.trim() || null,
+      notes: notes || null,
       advance_amount: advanceAmount,
       advance_date: hasAdvanceDate ? body.advanceDate : null,
       created_by: session.userId,
@@ -139,7 +154,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+    return error ? dbError(error) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
 
   return NextResponse.json({ ok: true, id: data.id }, { status: 201 });

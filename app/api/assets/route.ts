@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError, fail } from "@/lib/api";
+import { int, isIsoDate, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -14,16 +15,15 @@ const SELECT = `
 
 // ── GET /api/assets ─────────────────────────────────────────────────────────
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { data, error } = await supabaseAdmin
     .from("assets")
     .select(SELECT)
     .order("purchase_date", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
 
   return NextResponse.json({ assets: data ?? [] });
 }
@@ -39,9 +39,8 @@ interface AssetBody {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   let body: AssetBody;
   try {
@@ -52,31 +51,33 @@ export async function POST(request: NextRequest) {
 
   const { name, cost, purchaseDate, usefulLifeMonths, salvageValue, venueId } = body;
 
-  if (!name || !name.trim()) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  const cleanName = str(name, 120);
+  if (!cleanName) {
+    return NextResponse.json({ error: "Name is required (max 120 characters)" }, { status: 400 });
   }
-  if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) {
-    return NextResponse.json({ error: "Cost must be greater than 0" }, { status: 400 });
+  const cleanCost = money(cost, 1, 50_000_000);
+  if (cleanCost === null) {
+    return NextResponse.json({ error: "Cost must be from 1 to 50,000,000" }, { status: 400 });
   }
-  if (!purchaseDate || !/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) {
+  if (!isIsoDate(purchaseDate)) {
     return NextResponse.json({ error: "A valid purchase date is required" }, { status: 400 });
   }
-  if (typeof usefulLifeMonths !== "number" || !Number.isInteger(usefulLifeMonths) || usefulLifeMonths <= 0) {
-    return NextResponse.json({ error: "Useful life must be a whole number of months greater than 0" }, { status: 400 });
+  if (int(usefulLifeMonths, 1, 600) === null) {
+    return NextResponse.json({ error: "Useful life must be a whole number of months from 1 to 600" }, { status: 400 });
   }
-  const salvage = salvageValue ?? 0;
-  if (typeof salvage !== "number" || !Number.isFinite(salvage) || salvage < 0) {
-    return NextResponse.json({ error: "Salvage value can't be negative" }, { status: 400 });
+  const salvage = money(salvageValue ?? 0, 0, 50_000_000);
+  if (salvage === null) {
+    return NextResponse.json({ error: "Salvage value must be an amount from 0 to 50,000,000" }, { status: 400 });
   }
-  if (salvage >= cost) {
+  if (salvage >= cleanCost) {
     return NextResponse.json({ error: "Salvage value must be less than the cost" }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("assets")
     .insert({
-      name: name.trim(),
-      cost,
+      name: cleanName,
+      cost: cleanCost,
       purchase_date: purchaseDate,
       useful_life_months: usefulLifeMonths,
       salvage_value: salvage,
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+    return error ? dbError(error) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
 
   return NextResponse.json({ ok: true, id: data.id }, { status: 201 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireSession, fail } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -40,8 +40,8 @@ function bytesMatchType(type: string, b: Uint8Array): boolean {
 // Receipts are private. This returns the storage path; the app opens a
 // receipt through GET /api/expenses/[id]/receipt (short-lived signed URL).
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   let formData: FormData;
   try {
@@ -81,8 +81,7 @@ export async function POST(request: NextRequest) {
     .upload(path, bytes, { contentType: file.type, upsert: false });
 
   if (error) {
-    console.error("receipt upload failed", error);
-    return NextResponse.json({ error: "Could not upload the receipt. Try again." }, { status: 500 });
+    return fail(500, "Could not upload the receipt. Try again.", error);
   }
 
   return NextResponse.json({ path: data.path });

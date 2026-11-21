@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError, fail } from "@/lib/api";
+import { isMonth } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange, todayInKarachi } from "@/lib/dates";
 import { deriveAttendance, type AttendanceDay, type EmployeeAttendance } from "@/lib/attendance";
@@ -10,14 +11,13 @@ export type { AttendanceDay, EmployeeAttendance };
 
 // GET /api/attendance?month=2026-06
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
 
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+  if (!month || !isMonth(month)) {
     return NextResponse.json({ error: "Invalid month (expected YYYY-MM)" }, { status: 400 });
   }
 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     .order("name");
 
   if (empErr || !employees) {
-    return NextResponse.json({ error: empErr?.message ?? "Failed to fetch employees" }, { status: 500 });
+    return empErr ? dbError(empErr) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
 
   const employeeIds = employees.map((e) => e.id);
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     .gte("entry_date", startDate)
     .lte("entry_date", endDate);
 
-  if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
+  if (shiftErr) return dbError(shiftErr);
 
   // Fetch attendance_overrides for the month
   const { data: overrides, error: overErr } = await supabaseAdmin
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     .gte("override_date", startDate)
     .lte("override_date", endDate);
 
-  if (overErr) return NextResponse.json({ error: overErr.message }, { status: 500 });
+  if (overErr) return dbError(overErr);
 
   const result = deriveAttendance(employees, shifts ?? [], overrides ?? [], month, todayStr);
 

@@ -30,3 +30,14 @@ export function todayInKarachi(): string {
   });
   return formatter.format(new Date());
 }
+
+// "YYYY-MM-DD" shifted by `days` (negative = earlier). Pure calendar math in
+// UTC — no local-timezone or toISOString round-trip.
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  const yy = String(dt.getUTCFullYear()).padStart(4, "0");
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}

@@ -1,36 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
-import { resolveShiftCategory } from "@/lib/categories";
+import { requireOwner, fail, dbError } from "@/lib/api";
+import { parseEntryBody } from "@/lib/entry-input";
+import { todayInKarachi } from "@/lib/dates";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
-
-interface ExpenseInput {
-  description: string;
-  amount: number;
-  category?: string;
-}
-
-interface EditBody {
-  entryDate: string;
-  clockIn: string | null;
-  clockOut: string | null;
-  venueId: string;
-  eventName: string | null;
-  totalPrints: number;
-  extraPrints: number;
-  systemPrints500: number;
-  systemPrints250: number;
-  freePrints: number;
-  wastePrints: number;
-  // Informational only — never used to compute or validate revenue.
-  priceCharged?: number | null;
-  cashReceived: number;
-  bankReceived: number;
-  expenses: ExpenseInput[];
-  // Optional — only ever sent to be validated against the stored row.
-  userId?: string;
-}
 
 // PUT /api/entries/[id] — owner-only edit of an existing shift entry.
 //
@@ -43,38 +17,31 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
-  let body: EditBody;
+  let raw: unknown;
   try {
-    body = (await request.json()) as EditBody;
+    raw = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return fail(400, "Invalid request body");
   }
 
-  if (!body.entryDate || !body.venueId) {
-    return NextResponse.json({ error: "Date and venue are required" }, { status: 400 });
-  }
+  const parsed = parseEntryBody(raw);
+  if (!parsed.ok) return fail(400, parsed.error);
+  const body = parsed.value;
 
-  if (body.venueId === "event" && !body.eventName?.trim()) {
-    return NextResponse.json({ error: "Event name is required" }, { status: 400 });
-  }
+  if (body.entryDate > todayInKarachi()) return fail(400, "The date can't be in the future.");
 
-  if (
-    body.priceCharged !== null &&
-    body.priceCharged !== undefined &&
-    (typeof body.priceCharged !== "number" || !Number.isFinite(body.priceCharged) || body.priceCharged <= 0)
-  ) {
-    return NextResponse.json({ error: "Price offered must be a positive number" }, { status: 400 });
-  }
-
-  if ((body.expenses ?? []).some((e) => resolveShiftCategory(e.category) === null)) {
-    return NextResponse.json({ error: "Pick a valid type for each expense." }, { status: 400 });
-  }
+  const { data: venue, error: venueError } = await supabaseAdmin
+    .from("venues")
+    .select("id")
+    .eq("id", body.venueId)
+    .maybeSingle();
+  if (venueError) return dbError(venueError);
+  if (!venue) return fail(400, "That venue doesn't exist. Pick one from the list.");
 
   const { data: existing, error: fetchError } = await supabaseAdmin
     .from("shift_entries")
@@ -82,37 +49,31 @@ export async function PUT(
     .eq("id", id)
     .maybeSingle();
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  if (!existing) return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+  if (fetchError) return dbError(fetchError);
+  if (!existing) return fail(404, "Entry not found");
 
   // Identity is immutable through this route.
   if (body.entryDate !== existing.entry_date) {
-    return NextResponse.json(
-      { error: "The date of an entry can't be changed. Delete it and create a new one instead." },
-      { status: 400 }
-    );
+    return fail(400, "The date of an entry can't be changed. Delete it and create a new one instead.");
   }
   if (body.userId !== undefined && body.userId !== existing.user_id) {
-    return NextResponse.json(
-      { error: "The employee on an entry can't be changed." },
-      { status: 400 }
-    );
+    return fail(400, "The employee on an entry can't be changed.");
   }
 
   const { error: updateError } = await supabaseAsActor(session.userId)
     .from("shift_entries")
     .update({
       venue_id: body.venueId,
-      event_name: body.venueId === "event" ? (body.eventName ?? null) : null,
-      clock_in: body.clockIn ?? null,
-      clock_out: body.clockOut ?? null,
+      event_name: body.venueId === "event" ? body.eventName : null,
+      clock_in: body.clockIn,
+      clock_out: body.clockOut,
       total_prints: body.totalPrints,
       extra_prints: body.extraPrints,
       system_prints_500: body.systemPrints500,
       system_prints_250: body.systemPrints250,
       free_prints: body.freePrints,
       waste_prints: body.wastePrints,
-      price_charged: body.priceCharged ?? null,
+      price_charged: body.priceCharged,
       cash_received: body.cashReceived,
       bank_received: body.bankReceived,
       last_edited_by: session.userId,
@@ -124,29 +85,18 @@ export async function PUT(
     // Venue is part of the uniqueness key (user + date + venue): moving this
     // entry onto a venue the same person already logged that day collides.
     if (updateError.code === "23505") {
-      return NextResponse.json(
-        { error: "That employee already has an entry for this venue on this date." },
-        { status: 409 }
-      );
+      return fail(409, "That employee already has an entry for this venue on this date.");
     }
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return dbError(updateError);
   }
 
   // Replace expenses atomically (delete + insert in one DB transaction)
-  const validExpenses = (body.expenses ?? []).filter(
-    (e) => typeof e.description === "string" && e.description.trim() && e.amount > 0
-  );
-
   const { error: replaceError } = await supabaseAdmin.rpc("replace_entry_expenses", {
     p_shift_entry_id: id,
-    p_expenses: validExpenses.map((e) => ({
-      description: e.description.trim(),
-      amount: e.amount,
-      category: resolveShiftCategory(e.category),
-    })),
+    p_expenses: body.expenses,
   });
 
-  if (replaceError) return NextResponse.json({ error: replaceError.message }, { status: 500 });
+  if (replaceError) return dbError(replaceError);
 
   return NextResponse.json({ ok: true, entryId: id });
 }

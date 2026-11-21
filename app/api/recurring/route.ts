@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireOwner, dbError, fail } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { isCategory } from "@/lib/categories";
+import { int, money, str } from "@/lib/validate";
 
 export const preferredRegion = "sin1";
 
@@ -12,9 +13,8 @@ const SELECT = "id, name, category, amount, due_day, venue_id, active, venues(na
 
 // ── GET /api/recurring ────────────────────────────────────────────────────
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   const { data, error } = await supabaseAdmin
     .from("recurring_expenses")
@@ -22,7 +22,7 @@ export async function GET() {
     .order("active", { ascending: false })
     .order("name");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbError(error);
   return NextResponse.json({ items: data ?? [] });
 }
 
@@ -36,9 +36,8 @@ interface RecurringBody {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
 
   let body: RecurringBody;
   try {
@@ -48,25 +47,27 @@ export async function POST(request: NextRequest) {
   }
 
   const { name, category, amount, dueDay, venueId } = body;
-  if (!name || !name.trim()) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  const cleanName = str(name, 120);
+  if (!cleanName) {
+    return NextResponse.json({ error: "Name is required (max 120 characters)" }, { status: 400 });
   }
   if (!isCategory(category)) {
     return NextResponse.json({ error: "Pick a valid category" }, { status: 400 });
   }
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
-    return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
+  const cleanAmount = money(amount, 1, 5_000_000);
+  if (cleanAmount === null) {
+    return NextResponse.json({ error: "Amount must be from 1 to 5,000,000" }, { status: 400 });
   }
-  if (typeof dueDay !== "number" || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) {
+  if (int(dueDay, 1, 28) === null) {
     return NextResponse.json({ error: "Day of month must be between 1 and 28" }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("recurring_expenses")
     .insert({
-      name: name.trim(),
+      name: cleanName,
       category,
-      amount,
+      amount: cleanAmount,
       due_day: dueDay,
       venue_id: venueId || null,
     })
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message ?? "Insert failed" }, { status: 500 });
+    return error ? dbError(error) : fail(500, "Something went wrong. Try again.", "write returned no row");
   }
   return NextResponse.json({ ok: true, id: data.id }, { status: 201 });
 }

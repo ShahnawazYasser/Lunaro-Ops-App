@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session";
+import { requireSession, fail } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -39,8 +39,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const session = await requireSession();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
 
@@ -51,8 +51,7 @@ export async function GET(
     .maybeSingle();
 
   if (error) {
-    console.error("receipt lookup failed", error);
-    return NextResponse.json({ error: "Something went wrong. Try again." }, { status: 500 });
+    return fail(500, "Something went wrong. Try again.", error);
   }
   if (!row || !row.receipt_url) {
     return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
