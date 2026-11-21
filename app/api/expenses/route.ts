@@ -74,6 +74,9 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ expenses: data ?? [] });
 }
 
+// Storage path written by /api/expenses/upload: "<user-uuid>/<timestamp>.<ext>"
+const RECEIPT_PATH_RE = /^[0-9a-f-]{36}\/\d+\.(jpg|png|webp|heic|pdf)$/;
+
 // ── POST /api/expenses ────────────────────────────────────────────────────
 interface ExpenseBody {
   category: string;
@@ -81,7 +84,8 @@ interface ExpenseBody {
   expenseDate: string;
   description?: string | null;
   venueId?: string | null;
-  receiptUrl?: string | null;
+  // Storage path from /api/expenses/upload ("<user-id>/<ts>.jpg"), not a URL.
+  receiptPath?: string | null;
   // Owner-only fields — ignored entirely when an employee is the caller.
   paidBy?: PaidBy;
   payerUserId?: string | null;
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { category, amount, expenseDate, description, venueId, receiptUrl } = body;
+  const { category, amount, expenseDate, description, venueId, receiptPath } = body;
 
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "Amount must be greater than 0" }, { status: 400 });
@@ -109,6 +113,17 @@ export async function POST(request: NextRequest) {
   }
 
   const isOwner = session.role === "owner";
+
+  let receiptStored: string | null = null;
+  if (receiptPath !== undefined && receiptPath !== null) {
+    if (typeof receiptPath !== "string" || !RECEIPT_PATH_RE.test(receiptPath)) {
+      return NextResponse.json({ error: "Invalid receipt" }, { status: 400 });
+    }
+    if (!isOwner && !receiptPath.startsWith(`${session.userId}/`)) {
+      return NextResponse.json({ error: "Invalid receipt" }, { status: 400 });
+    }
+    receiptStored = receiptPath;
+  }
 
   let paidBy: PaidBy;
   let payerUserId: string | null;
@@ -162,7 +177,7 @@ export async function POST(request: NextRequest) {
       category,
       amount,
       description: description?.trim() || null,
-      receipt_url: receiptUrl ?? null,
+      receipt_url: receiptStored,
       paid_by: paidBy,
       payer_user_id: payerUserId,
       reimbursement_status: reimbursementStatus,

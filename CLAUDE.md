@@ -89,13 +89,18 @@ after every change — it must return zero errors before a task is done.
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://ybovehabxjjomurhqnlm.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<set in Vercel / .env.local, never commit>
 SUPABASE_SERVICE_ROLE_KEY=<server-only, never exposed to client, never commit>
 ```
 
-The publishable key is client-safe (RLS locks down what it can touch — see
-schema notes). The service role key is server-only and must never appear in
-any client-side bundle or be logged anywhere.
+There is no browser Supabase client and no publishable key — the app only
+talks to Supabase from API routes with the service-role key (Chunk 12b removed
+`lib/supabase/client.ts`). The service role key is server-only and must never
+appear in any client-side bundle or be logged anywhere.
+
+Receipts (Chunk 12b): the `receipts` bucket is **private**. Uploads return a
+storage path (stored in `expenses.receipt_url`); receipts are opened through
+`GET /api/expenses/[id]/receipt`, which redirects to a 60-second signed URL.
+Legacy rows holding a full public URL are still resolved by that route.
 
 ---
 

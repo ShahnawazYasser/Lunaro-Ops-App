@@ -158,7 +158,7 @@ export default function ReimburseClient({ user, venues }: Props) {
     }
 
     setSubmitting(true);
-    let receiptUrl: string | null = null;
+    let receiptPath: string | null = null;
 
     try {
       // Upload receipt if one was selected
@@ -175,8 +175,8 @@ export default function ReimburseClient({ user, venues }: Props) {
           setSubmitting(false);
           return;
         }
-        const upData = (await upRes.json()) as { url: string };
-        receiptUrl = upData.url;
+        const upData = (await upRes.json()) as { path: string };
+        receiptPath = upData.path;
       }
 
       const res = await fetch("/api/expenses", {
@@ -188,7 +188,7 @@ export default function ReimburseClient({ user, venues }: Props) {
           venueId: form.venueId || null,
           expenseDate: form.expenseDate,
           description: form.note,
-          receiptUrl,
+          receiptPath,
         }),
       });
 
@@ -355,7 +355,7 @@ export default function ReimburseClient({ user, venues }: Props) {
                         {row.receipt_url && (
                           <>
                             {" · "}
-                            <a href={row.receipt_url} target="_blank" rel="noopener noreferrer" className="text-gold">
+                            <a href={`/api/expenses/${row.id}/receipt`} target="_blank" rel="noopener noreferrer" className="text-gold">
                               Receipt ↗
                             </a>
                           </>

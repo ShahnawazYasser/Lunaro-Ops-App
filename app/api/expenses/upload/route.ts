@@ -4,16 +4,41 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
 
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "application/pdf",
-]);
+// Extension comes from the validated MIME type, never from the file name.
+const EXT_BY_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "application/pdf": "pdf",
+};
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
+function startsWith(b: Uint8Array, sig: number[], offset = 0): boolean {
+  return sig.every((v, i) => b[offset + i] === v);
+}
+
+// The first bytes must match what the client claimed the file is.
+function bytesMatchType(type: string, b: Uint8Array): boolean {
+  switch (type) {
+    case "image/jpeg":
+      return startsWith(b, [0xff, 0xd8, 0xff]);
+    case "image/png":
+      return startsWith(b, [0x89, 0x50, 0x4e, 0x47]);
+    case "application/pdf":
+      return startsWith(b, [0x25, 0x50, 0x44, 0x46]); // %PDF
+    case "image/webp": // RIFF....WEBP
+      return startsWith(b, [0x52, 0x49, 0x46, 0x46]) && startsWith(b, [0x57, 0x45, 0x42, 0x50], 8);
+    case "image/heic": // ....ftyp
+      return startsWith(b, [0x66, 0x74, 0x79, 0x70], 4);
+    default:
+      return false;
+  }
+}
+
+// Receipts are private. This returns the storage path; the app opens a
+// receipt through GET /api/expenses/[id]/receipt (short-lived signed URL).
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,35 +55,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.has(file.type)) {
+  const ext = EXT_BY_TYPE[file.type];
+  if (!ext) {
     return NextResponse.json(
       { error: "File type not allowed. Use JPEG, PNG, WebP, HEIC, or PDF." },
       { status: 400 }
     );
   }
 
-  const bytes = await file.arrayBuffer();
+  const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.byteLength > MAX_BYTES) {
     return NextResponse.json({ error: "File too large (max 5 MB)" }, { status: 400 });
   }
+  if (!bytesMatchType(file.type, bytes)) {
+    return NextResponse.json(
+      { error: "That file doesn't look like a real photo or PDF. Try another." },
+      { status: 400 }
+    );
+  }
 
-  const ext = file.name.split(".").pop() ?? "jpg";
   const path = `${session.userId}/${Date.now()}.${ext}`;
 
   const { data, error } = await supabaseAdmin.storage
     .from("receipts")
-    .upload(path, new Uint8Array(bytes), {
-      contentType: file.type,
-      upsert: false,
-    });
+    .upload(path, bytes, { contentType: file.type, upsert: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("receipt upload failed", error);
+    return NextResponse.json({ error: "Could not upload the receipt. Try again." }, { status: 500 });
   }
 
-  const { data: urlData } = supabaseAdmin.storage
-    .from("receipts")
-    .getPublicUrl(data.path);
-
-  return NextResponse.json({ url: urlData.publicUrl });
+  return NextResponse.json({ path: data.path });
 }

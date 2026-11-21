@@ -185,7 +185,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
     }
 
     setSubmitting(true);
-    let receiptUrl: string | null = null;
+    let receiptPath: string | null = null;
 
     try {
       if (receiptFile) {
@@ -201,8 +201,8 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
           setSubmitting(false);
           return;
         }
-        const upData = (await upRes.json()) as { url: string };
-        receiptUrl = upData.url;
+        const upData = (await upRes.json()) as { path: string };
+        receiptPath = upData.path;
       }
 
       const res = await fetch("/api/expenses", {
@@ -214,7 +214,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
           venueId: form.venueId || null,
           expenseDate: form.expenseDate,
           description: form.note,
-          receiptUrl,
+          receiptPath,
           paidBy: form.paidBy,
           payerUserId: form.paidBy === "employee" ? form.payerUserId : null,
           relatedUserId: form.category === "Salary" && form.relatedUserId ? form.relatedUserId : null,
@@ -479,7 +479,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
                         {row.receipt_url && (
                           <>
                             {" · "}
-                            <a href={row.receipt_url} target="_blank" rel="noopener noreferrer" className="text-gold">
+                            <a href={`/api/expenses/${row.id}/receipt`} target="_blank" rel="noopener noreferrer" className="text-gold">
                               Receipt ↗
                             </a>
                           </>
