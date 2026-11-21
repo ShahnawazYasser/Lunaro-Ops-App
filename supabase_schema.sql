@@ -140,9 +140,11 @@ create table public.attendance_overrides (
 -- deleted for a name on that name's successful login.
 create table public.login_attempts (
   name         text not null,
-  attempted_at timestamptz not null default now()
+  attempted_at timestamptz not null default now(),
+  ip           text
 );
 create index login_attempts_name_time on public.login_attempts (name, attempted_at);
+create index login_attempts_name_ip_time on public.login_attempts (name, ip, attempted_at);
 
 -- ─── Bookings (paid client events, Phase F) ──────────────────────────────────
 -- Simplified scope: no Google Calendar sync — a later phase adds columns for

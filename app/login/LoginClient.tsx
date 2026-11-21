@@ -10,6 +10,9 @@ type UserName = (typeof NAMES)[number];
 const KEY_CLS =
   "py-5 rounded-2xl text-2xl transition-all active:scale-95 bg-surface border border-[rgba(200,212,224,0.10)]";
 
+const MIN_PIN = 4;
+const MAX_PIN = 8;
+
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
 export default function LoginClient() {
@@ -34,6 +37,7 @@ export default function LoginClient() {
     async (fullPin: string) => {
       if (!selectedName) return;
       setLoading(true);
+      setError(null);
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -52,7 +56,7 @@ export default function LoginClient() {
         } else {
           triggerShake();
           setPin("");
-          setError("Wrong PIN — try again");
+          setError("Wrong name or PIN — try again");
         }
       } catch {
         setPin("");
@@ -67,15 +71,11 @@ export default function LoginClient() {
   const handleDigit = useCallback(
     (digit: string) => {
       if (loading || !selectedName) return;
-      const newPin = pin + digit;
-      if (newPin.length > 4) return;
-      setPin(newPin);
+      if (pin.length >= MAX_PIN) return;
+      setPin(pin + digit);
       setError(null);
-      if (newPin.length === 4) {
-        void submitPin(newPin);
-      }
     },
-    [pin, loading, selectedName, submitPin]
+    [pin, loading, selectedName]
   );
 
   const handleBackspace = () => {
@@ -126,9 +126,9 @@ export default function LoginClient() {
               <span>{selectedName}</span>
             </button>
 
-            {/* PIN dots */}
-            <div className={cx("flex justify-center gap-5 mb-3", shake && "animate-shake")}>
-              {[0, 1, 2, 3].map((i) => (
+            {/* PIN dots — grow with the PIN, minimum 4 shown */}
+            <div className={cx("flex justify-center gap-3 mb-3", shake && "animate-shake")}>
+              {Array.from({ length: Math.max(MIN_PIN, pin.length) }, (_, i) => i).map((i) => (
                 <div
                   key={i}
                   className={cx(
@@ -150,7 +150,7 @@ export default function LoginClient() {
                 <button
                   key={d}
                   onClick={() => handleDigit(d)}
-                  disabled={loading || pin.length >= 4}
+                  disabled={loading || pin.length >= MAX_PIN}
                   className={`${KEY_CLS} text-text font-medium disabled:opacity-40`}
                 >
                   {d}
@@ -169,7 +169,7 @@ export default function LoginClient() {
               {/* 0 */}
               <button
                 onClick={() => handleDigit("0")}
-                disabled={loading || pin.length >= 4}
+                disabled={loading || pin.length >= MAX_PIN}
                 className={`${KEY_CLS} text-text font-medium disabled:opacity-40`}
               >
                 0
@@ -182,6 +182,14 @@ export default function LoginClient() {
                 )}
               </div>
             </div>
+
+            <button
+              onClick={() => void submitPin(pin)}
+              disabled={loading || pin.length < MIN_PIN}
+              className="w-full mt-5 py-4 rounded-2xl text-lg font-semibold bg-gold text-bg transition-all active:scale-[0.98] disabled:opacity-40"
+            >
+              Sign in
+            </button>
           </div>
         )}
       </div>

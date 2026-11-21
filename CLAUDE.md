@@ -106,9 +106,9 @@ in Phase 1). Summary of the tables and why they're shaped this way:
 
 ### `users`
 Three rows: Ahsan (employee), Farhan (employee), Owner (owner). PIN stored
-as a bcrypt hash, never plain text, never sent to the client. PINs:
-Ahsan `8776`, Farhan `2537`, Owner `1200` — these get hashed by a seed
-script, not hardcoded anywhere as plaintext in the app.
+as a bcrypt hash, never plain text, never sent to the client. PINs are
+supplied to `scripts/seed.ts` via the `SEED_USERS` env var and are never
+written in the repo (see "Adding a New Employee").
 
 ### `venues`
 Static reference table, publicly readable (only table with an open RLS
@@ -1368,22 +1368,19 @@ as prior phases). `bookings` confirmed empty and both test months'
 
 ## Adding a New Employee
 
-There's no self-service signup — users are seeded via `scripts/seed.ts`,
+There's no self-service signup — users are created by `scripts/seed.ts`,
 which is safe to re-run (it upserts: updates the PIN hash if a user with
-that name already exists, inserts if not — won't touch or duplicate Ahsan,
-Farhan, or Owner).
+that name already exists, inserts if not). It reads users from the
+`SEED_USERS` env var, so **no PIN is ever written in the repo**.
 
 To add someone new:
-1. Open `scripts/seed.ts` and add a row to the `USERS` array, following the
-   existing Ahsan/Farhan entries — `{ name: "...", role: "employee", pin: "...." }`
-   (4-digit PIN, plaintext here only because the script hashes it on insert
-   — never commit a real PIN anywhere else).
+1. In your shell (or on one line in `.env.local`), set `SEED_USERS` to a JSON
+   array containing only the people to create or reset, e.g.
+   `SEED_USERS='[{"name":"Amnah","role":"employee","pin":"<4-8 digits>"}]'`.
+   Without it the script prints a message and exits 1; it never logs a PIN.
 2. Run `npm run seed` with `.env.local` pointed at the **production**
    Supabase project (same `NEXT_PUBLIC_SUPABASE_URL` /
-   `SUPABASE_SERVICE_ROLE_KEY` as set in Vercel). This is a local-machine
-   step — there's no admin UI for it.
-3. Tell the new employee their name (exactly as seeded) and PIN — they log
-   in the same way Ahsan and Farhan do, no account creation on their end.
-4. Optional cleanup: remove the temporary plaintext PIN from `USERS` after
-   confirming the login works, if you don't want it sitting in git history
-   going forward (it's already hashed in the database at that point).
+   `SUPABASE_SERVICE_ROLE_KEY` as set in Vercel). Local-machine step.
+3. Tell the new employee their name (exactly as seeded) and PIN in person.
+   Don't commit or paste a real PIN anywhere. Login names are still the
+   hard-coded list in `app/login/LoginClient.tsx` until Chunk 11 replaces it.

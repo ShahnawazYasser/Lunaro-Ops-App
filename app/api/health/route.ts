@@ -3,18 +3,14 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
 
-// GET /api/health
-// Verifies Supabase connectivity. Returns venue list as a connectivity probe.
-// Remove or restrict this before going to production if you prefer.
+// GET /api/health — connectivity probe. Returns only ok true/false.
 export async function GET() {
-  const { data, error } = await supabaseAdmin.from("venues").select("id, name");
+  const { error } = await supabaseAdmin.from("venues").select("id").limit(1);
 
   if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+    console.error("health: supabase probe failed", error);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, venues: data });
+  return NextResponse.json({ ok: true });
 }

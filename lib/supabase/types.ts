@@ -499,10 +499,12 @@ export interface Database {
         Row: {
           name: string;
           attempted_at: string;
+          ip: string | null;
         };
         Insert: {
           name: string;
           attempted_at?: string;
+          ip?: string | null;
         };
         Update: {
           name?: string;
