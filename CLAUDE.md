@@ -1302,6 +1302,24 @@ as prior phases). `bookings` confirmed empty and both test months'
 - `supabase_schema.sql` is stale for the finance-v2 tables (`assets`, `payout_cycles`, `recurring_expenses`,
   `expenses.is_owner_draw`, etc.): they live only in the `migration_finance_v2*.sql` files. Not fixed here.
 
+**Chunk 12 — Security hotfix (12a login/secrets, 12b lockdown/receipts, 12c validation/headers)**
+- **12a:** no PINs in the repo (`scripts/seed.ts` reads `SEED_USERS`); login returns one "Wrong name or PIN"
+  for unknown name and wrong PIN, dummy bcrypt compare, no `login_attempts` rows for unknown names, rate limit
+  5/15min per name+IP and 20/15min per name (`login_attempts.ip`, applied as `login_hardening`), PINs 4–8 digits,
+  login screen has a Sign in button. `/api/health` returns only `{ok}`.
+- **12b:** `receipts` bucket private; uploads return a storage path (magic-byte checked), stored in
+  `expenses.receipt_url`; opened via `GET /api/expenses/[id]/receipt` (60s signed URL; legacy public URLs still
+  resolve). `migration_security_lockdown.sql` (revokes, `security_invoker`, `search_path`, bucket private) —
+  apply only AFTER the 12b code is deployed. `lib/supabase/client.ts` deleted.
+- **12c:** `lib/api.ts` (`requireSession`/`requireOwner`/`fail`/`dbError`) is the one auth guard and error
+  mapper for every route under `app/api/**` — **never return `error.message` to a client; use `dbError`.**
+  `lib/validate.ts` (`isIsoDate`, `isTime`, `int`, `money`, `str`, plus `isUuid`, `isMonth`) and
+  `lib/entry-input.ts` (shared body parser for POST `/api/entries` and PUT `/api/entries/[id]`) hold the bounds.
+  Entry dates: employee = today or the 2 days before (Asia/Karachi), owner = any past date, nobody = future.
+  `lib/dates.ts` gained `addDays`. Security headers + CSP in `next.config.ts` (dev adds `'unsafe-eval'` and
+  `ws:` for HMR only; LAN IP now comes from `ALLOWED_DEV_ORIGINS`). `getSecret()` rejects a `SESSION_SECRET`
+  shorter than 32 characters.
+
 ### In progress
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.
