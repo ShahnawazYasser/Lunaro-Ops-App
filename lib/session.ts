@@ -20,6 +20,7 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days in seconds
 function getSecret(): Uint8Array {
   const s = process.env.SESSION_SECRET;
   if (!s) throw new Error("SESSION_SECRET env var is not set");
+  if (s.length < 32) throw new Error("SESSION_SECRET must be at least 32 characters");
   return new TextEncoder().encode(s);
 }
 
