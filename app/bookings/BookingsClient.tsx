@@ -65,7 +65,7 @@ function rowToFormValues(row: BookingRow): BookingFormValues {
     advanceDate: row.advance_date ?? "",
     finalAmount: row.final_amount != null ? String(row.final_amount) : "",
     finalDate: row.final_date ?? "",
-    status: row.status,
+    status: row.status === "cancelled" ? "cancelled" : "upcoming",
   };
 }
 

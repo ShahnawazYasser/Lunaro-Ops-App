@@ -69,6 +69,7 @@ interface DashboardResponse {
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
   rentCoverage: RentCoverageItem[];
+  unpostedFixedCosts: { name: string; venueName: string | null; amount: number }[];
   dailyRevenue: DailyRevenue[];
   ownerDraws: number;
 }
@@ -315,6 +316,7 @@ export default function DashboardClient() {
   const [, setVersion] = useState(0); // bumps when the cache is refreshed
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [counting, setCounting] = useState(false);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);
@@ -337,6 +339,30 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => defer(() => { void fetchMonth(month); }), [month, fetchMonth]);
+
+  // "Count them": posts this month's fixed costs as expenses (the route skips
+  // anything already posted, so pressing twice is safe), then refreshes.
+  const countFixedCosts = async () => {
+    setCounting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/recurring/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      if (!res.ok) {
+        const e = (await res.json()) as { error?: string };
+        setError(e.error ?? "Couldn't count the fixed costs");
+        return;
+      }
+      await fetchMonth(month);
+    } catch {
+      setError("Could not reach server");
+    } finally {
+      setCounting(false);
+    }
+  };
 
   const data = monthCache.get(month) ?? null;
 
@@ -414,6 +440,28 @@ export default function DashboardClient() {
 
         {data && (
           <div className={cx("space-y-3 transition-opacity duration-150 lg:space-y-4", loading && "opacity-90")}>
+            {/* Fixed costs not yet counted */}
+            {data.unpostedFixedCosts.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-gold/40 bg-gold/[0.12] p-4 lg:p-5">
+                <p className="min-w-0 flex-1 text-sm">
+                  <span className="font-semibold">
+                    {data.unpostedFixedCosts.length} fixed cost{data.unpostedFixedCosts.length === 1 ? "" : "s"} not yet counted this month:
+                  </span>{" "}
+                  <span className="text-text-muted">
+                    {data.unpostedFixedCosts.map((c) => `${c.name} ${pkr(c.amount)}`).join(", ")}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  disabled={counting}
+                  onClick={() => { void countFixedCosts(); }}
+                  className="shrink-0 rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-bg disabled:opacity-60"
+                >
+                  {counting ? "Counting…" : "Count them"}
+                </button>
+              </div>
+            )}
+
             {/* Rent-coverage alert */}
             {data.rentCoverage.map((item) => (
               <div

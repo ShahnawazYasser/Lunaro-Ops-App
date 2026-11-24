@@ -45,7 +45,7 @@ interface Props {
   submittingLabel?: string;
   /** Parent-owned in-flight state — disables the submit button. */
   submitting: boolean;
-  /** Edit mode only: reveals the Final Payment section and status picker. */
+  /** Edit mode only: reveals the Final Payment section and the Cancelled? picker. */
   showFinalPayment?: boolean;
   onSubmit: (payload: BookingPayload) => void | Promise<void>;
   /** Form-level validation messages the parent should surface (e.g. a toast). */
@@ -239,15 +239,14 @@ export default function BookingForm({
           />
         </FormField>
         {showFinalPayment && (
-          <FormField label="Status">
+          <FormField label="Cancelled?">
             <select
-              value={form.status}
-              onChange={(e) => setField("status", e.target.value as BookingStatus)}
+              value={form.status === "cancelled" ? "yes" : "no"}
+              onChange={(e) => setField("status", (e.target.value === "yes" ? "cancelled" : "upcoming") as BookingStatus)}
               className="input-base w-full"
             >
-              <option value="upcoming">Upcoming</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
             </select>
           </FormField>
         )}

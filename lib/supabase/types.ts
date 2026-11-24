@@ -53,16 +53,25 @@ export interface Database {
           id: string;
           name: string;
           location: string | null;
+          active: boolean;
+          collects_payments: boolean;
+          default_price: number | null;
         };
         Insert: {
           id: string;
           name: string;
           location?: string | null;
+          active?: boolean;
+          collects_payments?: boolean;
+          default_price?: number | null;
         };
         Update: {
           id?: string;
           name?: string;
           location?: string | null;
+          active?: boolean;
+          collects_payments?: boolean;
+          default_price?: number | null;
         };
         Relationships: [];
       };
@@ -181,6 +190,8 @@ export interface Database {
           shift_entry_id: string | null;
           venue_id: string | null;
           is_owner_draw: boolean;
+          recurring_id: string | null;
+          recurring_month: string | null;
           logged_by: string;
           created_at: string;
           updated_at: string;
@@ -199,6 +210,8 @@ export interface Database {
           shift_entry_id?: string | null;
           venue_id?: string | null;
           is_owner_draw?: boolean;
+          recurring_id?: string | null;
+          recurring_month?: string | null;
           logged_by: string;
           created_at?: string;
           updated_at?: string;
@@ -217,6 +230,8 @@ export interface Database {
           shift_entry_id?: string | null;
           venue_id?: string | null;
           is_owner_draw?: boolean;
+          recurring_id?: string | null;
+          recurring_month?: string | null;
           logged_by?: string;
           updated_at?: string;
         };
@@ -424,6 +439,8 @@ export interface Database {
           due_day: number;
           venue_id: string | null;
           active: boolean;
+          starts_on: string | null;
+          ends_on: string | null;
         };
         Insert: {
           id?: string;
@@ -433,6 +450,8 @@ export interface Database {
           due_day: number;
           venue_id?: string | null;
           active?: boolean;
+          starts_on?: string | null;
+          ends_on?: string | null;
         };
         Update: {
           id?: string;
@@ -442,6 +461,8 @@ export interface Database {
           due_day?: number;
           venue_id?: string | null;
           active?: boolean;
+          starts_on?: string | null;
+          ends_on?: string | null;
         };
         Relationships: [
           {

@@ -4,6 +4,7 @@ import { isMonth } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { monthRange, todayInKarachi } from "@/lib/dates";
 import { deriveAttendance } from "@/lib/attendance";
+import { appliesInMonth } from "@/lib/fixed-costs";
 
 export const preferredRegion = "sin1";
 
@@ -53,6 +54,14 @@ export interface RentCoverageItem {
   nextPayoutDue: string | null;
 }
 
+// Fixed costs (recurring_expenses) that apply this month at a venue Lunaro pays
+// flat, but have no expenses row yet. The owner posts them with one button.
+export interface UnpostedFixedCost {
+  name: string;
+  venueName: string | null;
+  amount: number;
+}
+
 export interface DashboardResponse {
   totalRevenue: number;
   totalExpenses: number;
@@ -88,6 +97,7 @@ export interface DashboardResponse {
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
   rentCoverage: RentCoverageItem[];
+  unpostedFixedCosts: UnpostedFixedCost[];
   // "Booth sales by day" chart (Chunk 9): one entry per calendar day of the
   // month, amount = cash_received + bank_received from that day's shift
   // entries. Shift entries only — payouts and bookings are NOT in this series,
@@ -136,6 +146,7 @@ export async function GET(request: NextRequest) {
     { data: recurringExpenses, error: recurErr },
     { data: payoutCycles, error: payoutErr },
     { data: owedRows, error: owedErr },
+    { data: postedRows, error: postedErr },
   ] = await Promise.all([
     // Shift entries for the month
     supabaseAdmin
@@ -160,7 +171,7 @@ export async function GET(request: NextRequest) {
       .lte("expense_date", endDate),
 
     // Venue labels
-    supabaseAdmin.from("venues").select("id, name"),
+    supabaseAdmin.from("venues").select("id, name, collects_payments"),
 
     // Booking (paid client event) revenue — CASH BASIS (Phase F). A payment
     // counts in the month its own date falls in; amount_charged and event_date
@@ -196,9 +207,8 @@ export async function GET(request: NextRequest) {
     // ("next payout due" looks forward past the selected month too).
     supabaseAdmin
       .from("recurring_expenses")
-      .select("name, amount, venue_id")
-      .eq("active", true)
-      .not("venue_id", "is", null),
+      .select("id, name, amount, venue_id, active, starts_on, ends_on")
+      .eq("active", true),
 
     supabaseAdmin
       .from("payout_cycles")
@@ -214,6 +224,13 @@ export async function GET(request: NextRequest) {
       .select("amount, payer_user_id, payer:users!expenses_payer_user_id_fkey(name)")
       .eq("paid_by", "employee")
       .eq("reimbursement_status", "pending"),
+
+    // Fixed costs already posted as an expense for this month.
+    supabaseAdmin
+      .from("expenses")
+      .select("recurring_id")
+      .eq("recurring_month", startDate)
+      .not("recurring_id", "is", null),
   ]);
 
   if (shiftErr) return dbError(shiftErr);
@@ -226,13 +243,15 @@ export async function GET(request: NextRequest) {
   if (recurErr) return dbError(recurErr);
   if (payoutErr) return dbError(payoutErr);
   if (owedErr) return dbError(owedErr);
+  if (postedErr) return dbError(postedErr);
 
   const shiftRows = shifts ?? [];
   const cycleRows = payoutCycles ?? [];
 
-  // Venues with a payout cycle in view. Only these can raise the rent-coverage
-  // alert (13b swaps this test for venues.collects_payments).
-  const payoutVenueIds = new Set(cycleRows.map((c) => c.venue_id));
+  // Venues that collect from guests and pay Lunaro by payout cycle (Lanes).
+  // Only these can raise the rent-coverage alert, and their fixed costs are
+  // never posted as expenses (the rent comes out of the payout).
+  const payoutVenueIds = new Set((venues ?? []).filter((v) => v.collects_payments).map((v) => v.id));
 
   // Rule: skip a 'Rent' expense row only when its venue had a payout RECEIVED
   // THIS MONTH with rent_deducted > 0 (that rent is counted via payoutRent).
@@ -303,6 +322,7 @@ export async function GET(request: NextRequest) {
   // payout_due for that venue strictly after this month, for context.
   const rentCoverage: RentCoverageItem[] = [];
   for (const rec of recurringExpenses ?? []) {
+    if (!appliesInMonth(rec, startDate, endDate)) continue;
     // Only payout venues can be "uncovered": a venue Lunaro collects at itself
     // and pays flat rent to (e.g. The Box Pine Avenue) has no payout to cover it.
     if (!rec.venue_id || !payoutVenueIds.has(rec.venue_id)) continue;
@@ -320,6 +340,21 @@ export async function GET(request: NextRequest) {
         nextPayoutDue: next?.payout_due ?? null,
       });
     }
+  }
+
+  // Fixed costs for this month that nobody has posted yet. Payout venues are
+  // excluded: their rent is deducted from the payout, never posted.
+  const postedIds = new Set((postedRows ?? []).map((r) => r.recurring_id));
+  const unpostedFixedCosts: UnpostedFixedCost[] = [];
+  for (const rec of recurringExpenses ?? []) {
+    if (!appliesInMonth(rec, startDate, endDate)) continue;
+    if (rec.venue_id && payoutVenueIds.has(rec.venue_id)) continue;
+    if (postedIds.has(rec.id)) continue;
+    unpostedFixedCosts.push({
+      name: rec.name,
+      venueName: rec.venue_id ? (venueNameMap.get(rec.venue_id) ?? rec.venue_id) : null,
+      amount: rec.amount,
+    });
   }
 
   // Revenue + free/waste print totals, grouped by venue
@@ -427,6 +462,7 @@ export async function GET(request: NextRequest) {
     attendance,
     daysInMonth,
     rentCoverage,
+    unpostedFixedCosts,
     dailyRevenue,
     ownerDraws,
   };

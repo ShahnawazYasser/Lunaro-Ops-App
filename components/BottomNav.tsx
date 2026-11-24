@@ -124,7 +124,7 @@ const OWNER_MAIN: NavItem[] = [
   { href: "/bookings", label: "Bookings", icon: <IconBookings /> },
   { href: "/payouts", label: "Payouts", icon: <IconPayouts /> },
   { href: "/assets", label: "Assets", icon: <IconAssets /> },
-  { href: "/recurring", label: "Recurring", icon: <IconRecurring /> },
+  { href: "/recurring", label: "Fixed costs", icon: <IconRecurring /> },
   { href: "/draws", label: "Owner Draws", icon: <IconDraws /> },
 ];
 const OWNER_SECONDARY: NavItem[] = [

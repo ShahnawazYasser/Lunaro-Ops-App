@@ -1336,6 +1336,18 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Data caveat: a stray `payout_cycles` row tagged `event` makes `event` look like a payout venue and raises bogus
   rent alerts for the recurring costs tagged `event`; delete it (see the Chunk 13 cleanup SQL).
 
+**Chunk 13b — Fixed costs that post themselves, venue flags** (`migration_recurring_and_venue_flags.sql` — written, NOT applied until the owner says so)
+- Migration adds `venues.active / collects_payments / default_price` (Lanes = collects_payments), `expenses.recurring_id` +
+  `recurring_month` with a unique index (one posting per fixed cost per month), and `recurring_expenses.starts_on / ends_on`.
+- `/recurring` is now the "Fixed costs" screen (nav label renamed; route unchanged): start/end dates added. `lib/fixed-costs.ts`
+  (`appliesInMonth`) is the one rule for "active and in range for the month".
+- `POST /api/recurring/post { month }` (owner-only) inserts one company expense per applicable fixed cost, dated the 1st,
+  "<name> (fixed cost)". Payout venues (`collects_payments`) are never posted. Repeat presses are skipped (existing-row check +
+  unique-index backstop). **Nothing posts automatically** — the owner presses "Count them" on the dashboard.
+- Dashboard returns `unpostedFixedCosts`; the rent-coverage alert now uses `venues.collects_payments` instead of "has a payout row".
+- `/entry` venue list = `active` and not `collects_payments`. Owner screens still list every venue (not changed).
+- Booking status is derived on read (cancelled / past → completed / else upcoming); the form's only choice is "Cancelled? Yes/No".
+
 ### In progress
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.

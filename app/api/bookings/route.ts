@@ -27,15 +27,25 @@ const SELECT = `
 
 interface BookingRow {
   id: string;
+  status: string;
+  event_date: string;
   amount_charged: number;
   advance_amount: number | null;
   final_amount: number | null;
   [key: string]: unknown;
 }
 
-function withBalanceDue<T extends BookingRow>(row: T) {
+// Display status is derived, not stored: nobody maintains the column, so only
+// 'cancelled' is read from it. Otherwise past events are 'completed' and the
+// rest are 'upcoming' (Karachi calendar day).
+function displayStatus(row: BookingRow, today: string): "upcoming" | "completed" | "cancelled" {
+  if (row.status === "cancelled") return "cancelled";
+  return row.event_date < today ? "completed" : "upcoming";
+}
+
+function withBalanceDue<T extends BookingRow>(row: T, today: string) {
   const received = (row.advance_amount ?? 0) + (row.final_amount ?? 0);
-  return { ...row, balance_due: row.amount_charged - received };
+  return { ...row, status: displayStatus(row, today), balance_due: row.amount_charged - received };
 }
 
 // ── GET /api/bookings?filter=upcoming|past|all ─────────────────────────────
@@ -65,7 +75,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) return dbError(error);
 
-  return NextResponse.json({ bookings: (data ?? []).map((row) => withBalanceDue(row as BookingRow)) });
+  return NextResponse.json({ bookings: (data ?? []).map((row) => withBalanceDue(row as BookingRow, today)) });
 }
 
 // ── POST /api/bookings ──────────────────────────────────────────────────────
