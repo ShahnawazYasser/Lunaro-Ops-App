@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { fail } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { createSessionToken, sessionCookieConfig } from "@/lib/session";
+import { createSessionToken, sessionCookie } from "@/lib/session";
+import { verifyPin } from "@/lib/pin";
 
 export const preferredRegion = "sin1";
 
@@ -50,16 +50,16 @@ export async function POST(request: NextRequest) {
 
   const { data: user, error } = await supabaseAdmin
     .from("users")
-    .select("id, name, role, pin_hash")
+    .select("id, name, role, pin_hash, active, session_version, must_set_pin")
     .eq("name", name)
     .maybeSingle();
 
   if (error) return fail(500, SERVER_ERROR, error);
 
-  if (!user) {
-    // Same cost and same response as a wrong PIN; no login_attempts row
-    // (unknown names must not grow the table).
-    await bcrypt.compare(pin, DUMMY_HASH);
+  if (!user || !user.active) {
+    // Unknown and deactivated names get the same cost and the same response as
+    // a wrong PIN; no login_attempts row (they must not grow the table).
+    await verifyPin(pin, DUMMY_HASH);
     return wrongCredentials();
   }
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     return fail(429, "Too many attempts. Wait 15 minutes and try again.");
   }
 
-  const pinMatch = await bcrypt.compare(pin, user.pin_hash);
+  const pinMatch = await verifyPin(pin, user.pin_hash);
   if (!pinMatch) {
     const { error: insertError } = await supabaseAdmin
       .from("login_attempts")
@@ -111,17 +111,16 @@ export async function POST(request: NextRequest) {
     userId: user.id,
     name: user.name,
     role: user.role as "employee" | "owner",
+    sv: user.session_version,
+    mustSetPin: user.must_set_pin,
   });
 
   const response = NextResponse.json({
     user: { id: user.id, name: user.name, role: user.role },
+    mustSetPin: user.must_set_pin,
   });
 
-  response.cookies.set({
-    ...sessionCookieConfig,
-    value: token,
-    secure: process.env.NODE_ENV === "production",
-  });
+  response.cookies.set(sessionCookie(user.role as "employee" | "owner", token));
 
   return response;
 }

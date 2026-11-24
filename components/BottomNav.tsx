@@ -98,6 +98,18 @@ const IconDailyEntry = () => (
     <path d="M12 8v8M8 12h8" />
   </Icon>
 );
+const IconUsers = () => (
+  <Icon>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" />
+  </Icon>
+);
+const IconLock = () => (
+  <Icon>
+    <rect x="5" y="11" width="14" height="9" rx="2.5" />
+    <path d="M8 11V8a4 4 0 018 0v3" />
+  </Icon>
+);
 const IconMore = () => (
   <Icon>
     <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="2.6" />
@@ -126,7 +138,11 @@ const OWNER_MAIN: NavItem[] = [
   { href: "/assets", label: "Assets", icon: <IconAssets /> },
   { href: "/recurring", label: "Fixed costs", icon: <IconRecurring /> },
   { href: "/draws", label: "Owner Draws", icon: <IconDraws /> },
+  { href: "/users", label: "Users", icon: <IconUsers /> },
 ];
+
+// Everyone can change their own PIN.
+const CHANGE_PIN: NavItem = { href: "/set-pin", label: "Change PIN", icon: <IconLock /> };
 const OWNER_SECONDARY: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: <IconAttendance /> },
   { href: "/entry", label: "Daily entry", icon: <IconDailyEntry /> },
@@ -209,7 +225,10 @@ export default function BottomNav({ role }: { role: string }) {
           ))}
         </nav>
 
-        <div className="mt-auto flex items-center gap-3 rounded-xl bg-surface-inset p-2">
+        <div className="mt-auto mb-2">
+          <SidebarRow item={CHANGE_PIN} active={pathname === CHANGE_PIN.href} />
+        </div>
+        <div className="flex items-center gap-3 rounded-xl bg-surface-inset p-2">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised text-sm font-semibold text-gold-light">
             {userLabel[0]}
           </div>
@@ -232,6 +251,7 @@ export default function BottomNav({ role }: { role: string }) {
         {mobileTabs.map((item) => (
           <TabLink key={item.href} item={item} active={pathname === item.href} />
         ))}
+        {!isOwner && <TabLink item={CHANGE_PIN} active={pathname === CHANGE_PIN.href} />}
         {isOwner ? (
           <TabButton
             label="More"
@@ -259,6 +279,7 @@ export default function BottomNav({ role }: { role: string }) {
                 <SidebarRow key={item.href} item={item} active={pathname === item.href} />
               ))}
               <div className="my-2 h-px bg-border" />
+              <SidebarRow item={CHANGE_PIN} active={false} />
               <button
                 onClick={() => { void handleLogout(); }}
                 className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-text-muted"

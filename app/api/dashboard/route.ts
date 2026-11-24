@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
     // Attendance summary — same derivation logic as /api/attendance:
     // present = a shift_entries row exists for that user+date, unless an
     // attendance_overrides row exists for that date, which always wins.
-    supabaseAdmin.from("users").select("id, name").eq("role", "employee").order("name"),
+    supabaseAdmin.from("users").select("id, name, active").eq("role", "employee").order("name"),
 
     supabaseAdmin
       .from("attendance_overrides")
@@ -418,7 +418,11 @@ export async function GET(request: NextRequest) {
 
   totalRevenue += bookingRevenue;
 
-  const employeeRows = employees ?? [];
+  // A deactivated employee only appears in months where they have at least one entry.
+  const hadEntry = new Set(shiftRows.map((s) => s.user_id));
+  const employeeRows = (employees ?? [])
+    .filter((e) => e.active || hadEntry.has(e.id))
+    .map((e) => ({ id: e.id, name: e.name }));
 
   const derivedAttendance = deriveAttendance(
     employeeRows,

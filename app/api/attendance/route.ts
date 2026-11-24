@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   // Fetch employees only (not owner)
   const { data: employees, error: empErr } = await supabaseAdmin
     .from("users")
-    .select("id, name")
+    .select("id, name, active")
     .eq("role", "employee")
     .order("name");
 
@@ -58,7 +58,13 @@ export async function GET(request: NextRequest) {
 
   if (overErr) return dbError(overErr);
 
-  const result = deriveAttendance(employees, shifts ?? [], overrides ?? [], month, todayStr);
+  // A deactivated employee only appears in months where they have at least one entry.
+  const hadEntry = new Set((shifts ?? []).map((s) => s.user_id));
+  const shown = employees
+    .filter((e) => e.active || hadEntry.has(e.id))
+    .map((e) => ({ id: e.id, name: e.name }));
+
+  const result = deriveAttendance(shown, shifts ?? [], overrides ?? [], month, todayStr);
 
   return NextResponse.json({ employees: result, daysInMonth });
 }

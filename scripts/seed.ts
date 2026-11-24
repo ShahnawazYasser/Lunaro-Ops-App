@@ -8,7 +8,7 @@
 // Safe to re-run: updates the PIN hash of an existing name, inserts otherwise.
 
 import { createClient } from "@supabase/supabase-js";
-import bcrypt from "bcryptjs";
+import { hashPin } from "../lib/pin";
 import type { Database } from "../lib/supabase/types";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -76,14 +76,13 @@ const supabase = createClient<Database>(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const SALT_ROUNDS = 12;
 
 async function seed(): Promise<void> {
   const users = parseSeedUsers(process.env.SEED_USERS);
   console.log("Seeding users...\n");
 
   for (const user of users) {
-    const pin_hash = await bcrypt.hash(user.pin, SALT_ROUNDS);
+    const pin_hash = await hashPin(user.pin);
 
     // Check if user already exists (users.name is unique)
     const { data: existing, error: selectError } = await supabase

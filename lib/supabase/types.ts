@@ -31,6 +31,10 @@ export interface Database {
           role: UserRole;
           pin_hash: string;
           created_at: string;
+          active: boolean;
+          must_set_pin: boolean;
+          pin_changed_at: string | null;
+          session_version: number;
         };
         Insert: {
           id?: string;
@@ -38,6 +42,10 @@ export interface Database {
           role: UserRole;
           pin_hash: string;
           created_at?: string;
+          active?: boolean;
+          must_set_pin?: boolean;
+          pin_changed_at?: string | null;
+          session_version?: number;
         };
         Update: {
           id?: string;
@@ -45,6 +53,10 @@ export interface Database {
           role?: UserRole;
           pin_hash?: string;
           created_at?: string;
+          active?: boolean;
+          must_set_pin?: boolean;
+          pin_changed_at?: string | null;
+          session_version?: number;
         };
         Relationships: [];
       };

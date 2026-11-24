@@ -1361,6 +1361,22 @@ as prior phases). `bookings` confirmed empty and both test months'
 - **Delete:** `DELETE /api/entries/[id]` (owner-only, via `supabaseAsActor` so `entry_audit` gets a `delete` row; expenses cascade). "Delete entry" button
   inside the owner edit sheet, behind a ConfirmDialog.
 
+**Chunk 11a — Users screen, self-set PINs, revocable sessions** (`migration_users_pins.sql` — applied as `users_pins`)
+- `users` gains `active`, `must_set_pin`, `pin_changed_at`, `session_version`. `lib/pin.ts`: `hashPin`/`verifyPin` (bcryptjs cost 12) and
+  `isWeakPin` (4–8 digits; no repeated digit, no straight run up/down incl. wrap like 7890).
+- **Revocable sessions:** JWT carries `sv` + `mustSetPin`; owner sessions last 12h, staff 7 days. `lib/auth.ts` `getVerifiedSession()` does one
+  indexed lookup (active, session_version, role/name/must_set_pin from the DB row) and is used by `requireSession`/`requireOwner` (lib/api.ts) and every
+  server page. **Role comes from the database, never the token.** Old tokens without `sv` are treated as signed out (everyone logs in once after deploy).
+  Pages must use `getVerifiedSession`, not `getSession` (that one only checks the signature).
+- **Forced PIN setup:** middleware sends a `mustSetPin` token to `/set-pin` only; API routes return 403 to such a session except `POST /api/auth/set-pin`
+  (and logout). `POST /api/auth/set-pin` acts on the session user only, rejects weak/unchanged PINs, bumps `session_version` (other devices signed out) and
+  reissues the cookie. A voluntary change asks for the current PIN (5 wrong tries/15 min via `login_attempts`).
+- **Login:** names come from `app/login/page.tsx` (active users, owner last); deactivated users get the same "Wrong name or PIN". The middleware no longer
+  redirects authenticated users away from `/login` — the login page checks the database itself (a stale cookie must not loop).
+- **Users screen:** `/users`, `GET/POST /api/users`, `PATCH /api/users/[id]` (`reset_pin` / `deactivate` / `reactivate`). Never returns `pin_hash`.
+- **Employee lists:** `/expenses` pickers = active staff only; `/api/attendance` and `/api/dashboard` show a deactivated employee only in months where
+  they have at least one shift entry. (`/api/expenses` POST does not check that a chosen payer/"salary for" is active — pickers prevent it.)
+
 ### In progress
 - **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
   its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
@@ -1437,19 +1453,16 @@ as prior phases). `bookings` confirmed empty and both test months'
 
 ## Adding a New Employee
 
-There's no self-service signup — users are created by `scripts/seed.ts`,
-which is safe to re-run (it upserts: updates the PIN hash if a user with
-that name already exists, inserts if not). It reads users from the
-`SEED_USERS` env var, so **no PIN is ever written in the repo**.
-
-To add someone new:
-1. In your shell (or on one line in `.env.local`), set `SEED_USERS` to a JSON
-   array containing only the people to create or reset, e.g.
-   `SEED_USERS='[{"name":"Amnah","role":"employee","pin":"<4-8 digits>"}]'`.
-   Without it the script prints a message and exits 1; it never logs a PIN.
-2. Run `npm run seed` with `.env.local` pointed at the **production**
-   Supabase project (same `NEXT_PUBLIC_SUPABASE_URL` /
-   `SUPABASE_SERVICE_ROLE_KEY` as set in Vercel). Local-machine step.
-3. Tell the new employee their name (exactly as seeded) and PIN in person.
-   Don't commit or paste a real PIN anywhere. Login names are still the
-   hard-coded list in `app/login/LoginClient.tsx` until Chunk 11 replaces it.
+Use the **Users** screen (`/users`, owner-only; nav → Users). No script, no deploy:
+1. **Add staff** — type their name (2–30 characters, unique) and a *temporary* PIN
+   (4–8 digits, no `1234`/`0000`-style easy guesses). They appear on the login screen
+   immediately (names are loaded from the database, owner last).
+2. Tell them the name and temporary PIN **in person**. Never paste a real PIN anywhere.
+3. On first sign-in they are forced to `/set-pin` to choose their own PIN; nothing else
+   works until they do. Anyone can change their PIN later from "Change PIN" in the menu.
+- **Reset PIN** (Users screen): new temporary PIN, must choose their own again, signed out
+  everywhere, lockout cleared. **Deactivate**: can't sign in, signed out at once; people are
+  never deleted, so entries/attendance/audit history stay. You can't deactivate yourself or
+  the last active owner.
+- `scripts/seed.ts` (`SEED_USERS` env var, see `.env.local.example`) still works for the
+  very first owner or recovery; it uses `lib/pin.ts` and never logs a PIN.
