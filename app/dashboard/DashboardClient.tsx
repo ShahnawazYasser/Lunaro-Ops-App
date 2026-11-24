@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import { cx } from "@/components/cx";
+import MonthSwitcher from "@/components/MonthSwitcher";
 import { defer } from "@/lib/defer";
 import { currentMonthInKarachi, formatDate, formatMonthLabel, shiftMonth } from "@/lib/dates";
+import { pkr, plural } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -81,14 +83,6 @@ const monthCache = new Map<string, DashboardResponse>();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function pkr(n: number): string {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 // ── Small building blocks ──────────────────────────────────────────────────
 
 function Glass({ className, children }: { className?: string; children: ReactNode }) {
@@ -128,22 +122,6 @@ function PhotoStrip({ small }: { small?: boolean }) {
           <div className={cx("rounded-full bg-gold-light", small ? "h-4 w-4" : "h-7 w-7")} />
         </div>
       ))}
-    </div>
-  );
-}
-
-function MonthPill({ label, onPrev, onNext }: { label: string; onPrev: () => void; onNext: () => void }) {
-  const btn =
-    "flex h-10 w-10 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-surface-inset text-text transition-colors duration-150 hover:bg-surface-raised";
-  return (
-    <div className="glass flex w-full items-center justify-between rounded-full p-1.5 lg:w-[280px]">
-      <button className={btn} onClick={onPrev} aria-label="Previous month">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
-      </button>
-      <span className="text-sm font-semibold">{label}</span>
-      <button className={btn} onClick={onNext} aria-label="Next month">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
-      </button>
     </div>
   );
 }
@@ -392,7 +370,7 @@ export default function DashboardClient() {
             <LMark className="h-8 w-8 rounded-[10px] text-base lg:hidden" />
             <h1 className="font-display text-[26px] font-semibold leading-[34px] tracking-[-0.01em] lg:text-[28px]">Dashboard</h1>
           </div>
-          <MonthPill label={formatMonthLabel(month)} onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
+          <MonthSwitcher variant="pill" label={formatMonthLabel(month)} onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
         </header>
 
         {error && (

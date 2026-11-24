@@ -21,6 +21,7 @@ import ShiftEntryForm, {
 } from "@/components/ShiftEntryForm";
 import { defer } from "@/lib/defer";
 import { currentMonthInKarachi, formatDate, formatMonthLabel, hoursWorked, shiftMonth } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,10 +64,6 @@ function formatEditedAt(ts: string): string {
     day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
     timeZone: "Asia/Karachi",
   });
-}
-
-function pkr(n: number): string {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
 
 // clock_in/clock_out come back from Postgres as "HH:MM:SS"

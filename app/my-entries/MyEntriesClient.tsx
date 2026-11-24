@@ -19,6 +19,7 @@ import ShiftEntryForm, {
 } from "@/components/ShiftEntryForm";
 import { defer } from "@/lib/defer";
 import { currentMonthInKarachi, formatDate, formatMonthLabel, hoursWorked } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,10 +65,6 @@ interface MineResponse {
   entries: MyEntry[];
   summary: Summary;
   availableMonths: string[];
-}
-
-function pkr(n: number): string {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
 
 function venueLabel(row: MyEntry): string {

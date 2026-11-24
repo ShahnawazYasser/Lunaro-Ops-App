@@ -1,21 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
-import Badge from "@/components/Badge";
-import Button from "@/components/Button";
-import Chip from "@/components/Chip";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import EmptyState from "@/components/EmptyState";
-import FormField, { MoneyField, InputStyles } from "@/components/FormField";
+import ExpenseForm from "@/components/ExpenseForm";
+import ExpenseList, { type ExpenseRow } from "@/components/ExpenseList";
+import { InputStyles } from "@/components/FormField";
 import MonthSwitcher from "@/components/MonthSwitcher";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
-import { EMPLOYEE_CATEGORIES, type EmployeeCategory } from "@/lib/categories";
 import { defer } from "@/lib/defer";
-import { currentMonthInKarachi, formatMonthLabel, todayInKarachi, shiftMonth } from "@/lib/dates";
+import { currentMonthInKarachi, formatMonthLabel, shiftMonth } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,43 +28,10 @@ interface Props {
 // (Phase D API, Phase E screen). Employees only ever see and log their own
 // employee-paid rows; the API enforces that server-side regardless of what
 // this client sends. Owner-facing money-out lives on /expenses instead.
-interface ExpenseRow {
-  id: string;
-  category: string;
-  amount: number;
-  description: string | null;
-  receipt_url: string | null;
-  reimbursement_status: string | null;
-  expense_date: string;
-  venue_id: string | null;
-  venues: { name: string } | null;
-}
-
-interface FormState {
-  category: EmployeeCategory;
-  amount: string;
-  venueId: string;
-  expenseDate: string;
-  note: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number) {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function blankForm(): FormState {
-  return { category: "Petrol", amount: "", venueId: "", expenseDate: todayInKarachi(), note: "" };
-}
 
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ReimburseClient({ user, venues }: Props) {
-  const [form, setForm] = useState<FormState>(blankForm);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   // Filter state
@@ -78,18 +43,6 @@ export default function ReimburseClient({ user, venues }: Props) {
   const [listError, setListError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  // Form validation
-  const [submitAttempted, setSubmitAttempted] = useState(false);
-  const amountError = (() => {
-    if (form.amount.trim() === "") return "Enter an amount";
-    const n = Number(form.amount);
-    if (n < 0) return "Can't be a negative number";
-    if (n <= 0) return "Enter an amount greater than 0";
-    return undefined;
-  })();
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
@@ -121,67 +74,6 @@ export default function ReimburseClient({ user, venues }: Props) {
   }, [filterMonth, user.id]);
 
   useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
-
-  const handleSubmit = async () => {
-    setSubmitAttempted(true);
-    if (amountError) {
-      showToast("error", amountError);
-      return;
-    }
-
-    setSubmitting(true);
-    let receiptPath: string | null = null;
-
-    try {
-      // Upload receipt if one was selected
-      if (receiptFile) {
-        setUploading(true);
-        const fd = new FormData();
-        fd.append("file", receiptFile);
-        const upRes = await fetch("/api/expenses/upload", { method: "POST", body: fd });
-        setUploading(false);
-
-        if (!upRes.ok) {
-          const e = (await upRes.json()) as { error?: string };
-          showToast("error", e.error ?? "Receipt upload failed");
-          setSubmitting(false);
-          return;
-        }
-        const upData = (await upRes.json()) as { path: string };
-        receiptPath = upData.path;
-      }
-
-      const res = await fetch("/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: form.category,
-          amount: Number(form.amount),
-          venueId: form.venueId || null,
-          expenseDate: form.expenseDate,
-          description: form.note,
-          receiptPath,
-        }),
-      });
-
-      if (res.ok) {
-        showToast("success", "Expense logged!");
-        setForm(blankForm());
-        setSubmitAttempted(false);
-        setReceiptFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        void fetchList();
-      } else {
-        const e = (await res.json()) as { error?: string };
-        showToast("error", e.error ?? "Something went wrong");
-      }
-    } catch {
-      showToast("error", "Could not submit — check your connection");
-    } finally {
-      setSubmitting(false);
-      setUploading(false);
-    }
-  };
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
@@ -227,61 +119,7 @@ export default function ReimburseClient({ user, venues }: Props) {
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
-        {/* ── Log Expense Form ─────────────────────────────────── */}
-        <section>
-          <SectionLabel>Log Expense</SectionLabel>
-          <Card className="space-y-4">
-            <FormField label="Category">
-              <div className="grid grid-cols-2 gap-2">
-                {EMPLOYEE_CATEGORIES.map((cat) => (
-                  <Chip key={cat} size="md" active={form.category === cat}
-                    onClick={() => setForm((f) => ({ ...f, category: cat }))}>
-                    {cat}
-                  </Chip>
-                ))}
-              </div>
-            </FormField>
-
-            <MoneyField label="Amount" value={form.amount}
-              onChange={(v) => setForm((f) => ({ ...f, amount: v }))}
-              error={submitAttempted ? amountError : undefined} />
-
-            <FormField label="Venue (optional)">
-              {venues.length === 0 ? (
-                <p className="text-sm text-text-muted">No venues configured</p>
-              ) : (
-                <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
-                  className="input-base w-full">
-                  <option value="">— None —</option>
-                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
-              )}
-            </FormField>
-
-            <FormField label="Date">
-              <input type="date" value={form.expenseDate}
-                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-                className="input-base w-full" />
-            </FormField>
-
-            <FormField label="Note">
-              <input type="text" placeholder="e.g. Fuel to Third Culture" value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                className="input-base w-full" />
-            </FormField>
-
-            <FormField label={<>Receipt photo <span className="font-normal">(optional)</span></>}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf"
-                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium cursor-pointer text-text-muted bg-bg border border-[rgba(200,212,224,0.2)] rounded-[10px] px-3 py-2" />
-              {receiptFile && <p className="text-xs mt-1 text-gold">{receiptFile.name}</p>}
-            </FormField>
-
-            <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting || uploading}>
-              {uploading ? "Uploading receipt…" : submitting ? "Saving…" : "Log Expense"}
-            </Button>
-          </Card>
-        </section>
+        <ExpenseForm variant="employee" venues={venues} onToast={showToast} onLogged={() => { void fetchList(); }} />
 
         {/* ── Past expenses ────────────────────────────────────── */}
         <section>
@@ -299,55 +137,14 @@ export default function ReimburseClient({ user, venues }: Props) {
           </Card>
         </section>
 
-        {/* ── List ─────────────────────────────────────────────── */}
-        <section className="space-y-2">
-          {listLoading ? (
-            <EmptyState message="Loading…" />
-          ) : listError ? (
-            <EmptyState error message={listError} onRetry={() => { void fetchList(); }} />
-          ) : rows.length === 0 ? (
-            <EmptyState message="No expenses for this period" />
-          ) : (
-            rows.map((row) => {
-              const isPaid = row.reimbursement_status === "paid";
-              return (
-                <Card key={row.id} size="sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge>{row.category}</Badge>
-                        {row.venues && <span className="text-xs text-text-muted">{row.venues.name}</span>}
-                        <Badge tone={isPaid ? "gold" : "muted"}>{isPaid ? "Paid back" : "Waiting"}</Badge>
-                      </div>
-                      {row.description && <p className="text-sm mt-1 truncate text-text">{row.description}</p>}
-                      <p className="text-xs mt-1 text-text-muted">
-                        {new Date(row.expense_date + "T00:00:00").toLocaleDateString("en-PK", {
-                          day: "numeric", month: "short",
-                        })}
-                        {row.receipt_url && (
-                          <>
-                            {" · "}
-                            <a href={`/api/expenses/${row.id}/receipt`} target="_blank" rel="noopener noreferrer" className="text-gold">
-                              Receipt ↗
-                            </a>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className="text-sm font-semibold text-text">{pkr(row.amount)}</span>
-                      {!isPaid && (
-                        <Button variant="danger" size="xs" onClick={() => setConfirmDeleteId(row.id)}>
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </section>
+        <ExpenseList
+          variant="employee"
+          rows={rows}
+          loading={listLoading}
+          error={listError}
+          onRetry={() => { void fetchList(); }}
+          onDelete={setConfirmDeleteId}
+        />
       </main>
 
       <BottomNav role={user.role} />

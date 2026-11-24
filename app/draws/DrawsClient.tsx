@@ -12,6 +12,7 @@ import MonthSwitcher from "@/components/MonthSwitcher";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { currentMonthInKarachi, formatMonthLabel, shiftMonth, todayInKarachi } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,10 +31,6 @@ interface DrawRow {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number) {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
 
 // ── Main component ─────────────────────────────────────────────────────────
 

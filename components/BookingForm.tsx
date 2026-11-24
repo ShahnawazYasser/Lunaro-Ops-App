@@ -7,6 +7,7 @@ import Card from "./Card";
 import FormField, { MoneyField, InputStyles } from "./FormField";
 import SectionLabel from "./SectionLabel";
 import { todayInKarachi } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -74,10 +75,6 @@ export function blankBookingValues(): BookingFormValues {
 function parseNum(val: string): number {
   const n = parseFloat(val);
   return isNaN(n) ? 0 : n;
-}
-
-function pkr(amount: number): string {
-  return `PKR ${Math.round(amount).toLocaleString("en-PK")}`;
 }
 
 // ── Form ───────────────────────────────────────────────────────────────────

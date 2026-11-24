@@ -106,8 +106,7 @@ Legacy rows holding a full public URL are still resolved by that route.
 
 ## Database Schema (locked — do not redesign)
 
-Full SQL lives in `supabase_schema.sql` at the repo root (or will be added
-in Phase 1). Summary of the tables and why they're shaped this way:
+Full SQL lives in `db/supabase_schema.sql` (regenerated from the live database in Chunk 14a; migrations are `db/migration_*.sql`). Summary of the tables and why they're shaped this way:
 
 ### `users`
 Three rows: Ahsan (employee), Farhan (employee), Owner (owner). PIN stored
@@ -258,7 +257,7 @@ day now.
 - `lib/supabase/client.ts` — browser Supabase client (anon/publishable key)
 - `lib/supabase/server.ts` — server-only admin client (service role key, bypasses RLS)
 - `lib/supabase/types.ts` — full typed Database schema (Supabase v2 format)
-- `supabase_schema.sql` — complete schema ready to run (see instructions below)
+- `db/supabase_schema.sql` — complete schema ready to run (see instructions below)
 - `scripts/seed.ts` — one-time user seed, run with `npm run seed`
 - `app/api/health/route.ts` — GET /api/health proves Supabase connectivity
 - Tailwind v4 design tokens set via `@theme` in `app/globals.css`
@@ -268,11 +267,11 @@ day now.
 ### Schema: manual steps required
 
 The Supabase MCP server was not connected during Phase 1, so the schema
-could not be applied automatically. You must run `supabase_schema.sql`
+could not be applied automatically. You must run `db/supabase_schema.sql`
 manually:
 
 1. Go to https://supabase.com/dashboard/project/ybovehabxjjomurhqnlm/sql
-2. Open `supabase_schema.sql` from this repo
+2. Open `db/supabase_schema.sql` from this repo
 3. Paste the full contents and click Run
 4. Confirm all 5 tables created: `users`, `venues`, `shift_entries`,
    `entry_expenses`, `reimbursements`, `attendance_overrides`
@@ -602,7 +601,7 @@ All 4 outstanding checks passed, no fixes needed:
   reimplement the rule.** Verified byte-identical JSON output from both
   routes before/after the refactor, for two different months, against
   the live database.
-- `supabase_schema.sql` was stale — the live DB had `expense_date` and
+- `db/supabase_schema.sql` was stale — the live DB had `expense_date` and
   `venue_id` columns on `reimbursements` that the file didn't. Introspected
   the live DB via the Supabase MCP server and brought the file back in
   sync (file → matches DB; DB was not changed for this).
@@ -611,11 +610,11 @@ All 4 outstanding checks passed, no fixes needed:
   failed insert after the delete silently lost that shift's expenses.
   Added a Postgres function `public.replace_entry_expenses(p_shift_entry_id,
   p_expenses jsonb)` (delete + insert in one transaction) via the Supabase
-  MCP server, added to `supabase_schema.sql`, and the route now calls it
+  MCP server, added to `db/supabase_schema.sql`, and the route now calls it
   via `supabaseAdmin.rpc(...)` instead of two separate calls.
 - Login rate limiting: `/api/auth/login` previously allowed unlimited PIN
   attempts. Added `public.login_attempts` table (name + timestamp, via
-  MCP + `supabase_schema.sql`). Route now counts failed attempts for a
+  MCP + `db/supabase_schema.sql`). Route now counts failed attempts for a
   name in the last 15 minutes before checking the PIN; 5+ returns 429
   with `"Too many attempts. Wait 15 minutes and try again."`; every failed
   attempt inserts a row; a successful login deletes that name's rows.
@@ -628,7 +627,7 @@ All 4 outstanding checks passed, no fixes needed:
   calendar-day boundary — not a bug, left as-is.
 
 **Phase B — Entries Detail View + Cash-Collected Lock**
-- Migration (via Supabase MCP, added to `supabase_schema.sql`): `shift_entries`
+- Migration (via Supabase MCP, added to `db/supabase_schema.sql`): `shift_entries`
   gains `cash_collected boolean not null default false` and
   `cash_collected_at timestamptz`.
 - `GET /api/entries` select expanded to return every `shift_entries` column
@@ -676,7 +675,7 @@ All 4 outstanding checks passed, no fixes needed:
 - `npx tsc --noEmit` → zero errors. `npm run build` → zero errors.
 
 **Phase C — Owner Entry Editing + Audit Trail**
-- Migration (via Supabase MCP, added to `supabase_schema.sql`): `shift_entries`
+- Migration (via Supabase MCP, added to `db/supabase_schema.sql`): `shift_entries`
   gains `last_edited_by uuid references public.users(id)` and
   `last_edited_at timestamptz`. Null = never owner-edited. `updated_at` is
   deliberately not used for this — it moves on any update including the
@@ -779,7 +778,7 @@ edited).
 **Phase D — Unified Expenses Table (data layer + APIs; no new screens)**
 
 - **Migration run against production** via the Supabase MCP server, exactly
-  as written in `migration_expenses.sql` (kept at the repo root as the
+  as written in `db/migration_expenses.sql` (kept in `db/` as the
   locked record of what was run). Step 4's verification gate passed before
   any renames: reimbursements 5 rows / PKR 74,500 → 5 employee-paid expense
   rows / PKR 74,500; entry_expenses 7 rows / PKR 4,000 → 7 shift-linked
@@ -1025,8 +1024,8 @@ expense row too). `/api/dashboard?month=2026-12` confirmed back to
 
 **Phase F — Paid Client-Event Bookings**
 
-- **New `bookings` table** (`migration_bookings.sql`, applied via the
-  Supabase MCP server; `supabase_schema.sql` and `lib/supabase/types.ts`
+- **New `bookings` table** (`db/migration_bookings.sql`, applied via the
+  Supabase MCP server; `db/supabase_schema.sql` and `lib/supabase/types.ts`
   synced). One row per paid client event: `client_name`, optional
   `event_name`/`package`/`notes`, `amount_charged` (the agreed deal),
   `event_date`, an advance pair (`advance_amount`+`advance_date`) and a
@@ -1164,7 +1163,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - **Chunk 0a/0b:** API routes pinned to Singapore (`preferredRegion = "sin1"`),
   `shift_entries` date index, and the dashboard's sequential queries
   parallelized into one `Promise.all`.
-- **Chunk 1:** `migration_finance_v2.sql` (applied as `finance_v2`) —
+- **Chunk 1:** `db/migration_finance_v2.sql` (applied as `finance_v2`) —
   assets/depreciation, `price_charged`, `payout_cycles`,
   `recurring_expenses`, owner draws tables.
 - **Chunk 2:** `/assets` screen + straight-line depreciation on the dashboard.
@@ -1176,7 +1175,7 @@ as prior phases). `bookings` confirmed empty and both test months'
     mark received). 403 for employees.
   - **`payout_due` is a manually entered date, never computed** — Lanes
     pays "within ~10 days" but the real date varies. It stays null until
-    the owner knows it (`migration_payout_due_manual.sql`, applied as
+    the owner knows it (`db/migration_payout_due_manual.sql`, applied as
     `payout_due_manual`). Don't reintroduce a generated `cycle_end + 10`.
   - **Rent is not due on a fixed calendar day** — it comes out of whichever
     payout cycle it lands in (`payout_cycles.rent_deducted`).
@@ -1186,7 +1185,7 @@ as prior phases). `bookings` confirmed empty and both test months'
     `GET /api/dashboard`): an active venue-linked recurring expense is
     "uncovered" for a month when no `payout_cycles` row for that venue has
     a known `payout_due` inside that month.
-  - Seed data (`migration_finance_v2_data.sql`, applied as
+  - Seed data (`db/migration_finance_v2_data.sql`, applied as
     `finance_v2_data_lanes_payouts`): 13 Lanes cycles of 28 days from
     2026-09-26 through 2027-09-24, all `payout_due` null, plus one
     "Lanes rent" recurring expense (PKR 60,000).
@@ -1261,7 +1260,7 @@ as prior phases). `bookings` confirmed empty and both test months'
   (Operational default, Paper, Ink, Maintenance, Petrol, Food, Transport, Venue/Event, Misc — no Salary/Rent)
   and `resolveShiftCategory()`. Both `POST /api/entries` and `PUT /api/entries/[id]` validate each row
   **before any write** (bad category → 400); missing/blank → Operational. The RPC reads an optional
-  `category` per element (`migration_shift_expense_category.sql`, applied as `shift_expense_category`;
+  `category` per element (`db/migration_shift_expense_category.sql`, applied as `shift_expense_category`;
   backward-compatible, so older deployed code keeps working). Existing rows stay Operational — the original
   category was never recorded. `GET /api/entries` returns `category` and the entries detail shows it.
 - Verified: RPC in a rolled-back transaction; API 400s; UI payload via an intercepted submit (nothing written).
@@ -1269,7 +1268,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 **Chunk 10 — Owner draws, recurring costs, lint cleanup (after shift expense categories)**
 - **Owner draws** (`/draws`, owner-only; `GET/POST /api/draws`, `DELETE /api/draws/[id]`). A draw is a row in
   `expenses` with `is_owner_draw = true`, category `'Owner Draw'`, company-paid (the flag column already existed
-  from `migration_finance_v2.sql`). **Permanent rule: draws are NOT business costs.** Every P&L query excludes them:
+  from `db/migration_finance_v2.sql`). **Permanent rule: draws are NOT business costs.** Every P&L query excludes them:
   `GET /api/dashboard` filters `is_owner_draw = false` on its expense query (so `totalExpenses`, `netProfit` and
   `expensesByCategory` never include a draw) and reports them separately as `ownerDraws`; `GET /api/expenses`
   filters them out of the list. The dashboard shows "Owner draws PKR X · not in profit" under Owed to staff, only
@@ -1299,8 +1298,8 @@ as prior phases). `bookings` confirmed empty and both test months'
   draw, confirm the dashboard profit does not move, add/pause/edit/delete a recurring cost, and click through all
   screens that got the `defer` change (assets, attendance, bookings, dashboard, entries, expenses, payouts,
   reimburse) in both roles.
-- `supabase_schema.sql` is stale for the finance-v2 tables (`assets`, `payout_cycles`, `recurring_expenses`,
-  `expenses.is_owner_draw`, etc.): they live only in the `migration_finance_v2*.sql` files. Not fixed here.
+- (Fixed in Chunk 14a — `db/supabase_schema.sql` was regenerated from the live DB.) It had been stale for the finance-v2 tables (`assets`, `payout_cycles`, `recurring_expenses`,
+  `expenses.is_owner_draw`, etc.): they used to live only in the `db/migration_finance_v2*.sql` files.
 
 **Chunk 12 — Security hotfix (12a login/secrets, 12b lockdown/receipts, 12c validation/headers)**
 - **12a:** no PINs in the repo (`scripts/seed.ts` reads `SEED_USERS`); login returns one "Wrong name or PIN"
@@ -1309,7 +1308,7 @@ as prior phases). `bookings` confirmed empty and both test months'
   login screen has a Sign in button. `/api/health` returns only `{ok}`.
 - **12b:** `receipts` bucket private; uploads return a storage path (magic-byte checked), stored in
   `expenses.receipt_url`; opened via `GET /api/expenses/[id]/receipt` (60s signed URL; legacy public URLs still
-  resolve). `migration_security_lockdown.sql` (revokes, `security_invoker`, `search_path`, bucket private) —
+  resolve). `db/migration_security_lockdown.sql` (revokes, `security_invoker`, `search_path`, bucket private) —
   apply only AFTER the 12b code is deployed. `lib/supabase/client.ts` deleted.
 - **12c:** `lib/api.ts` (`requireSession`/`requireOwner`/`fail`/`dbError`) is the one auth guard and error
   mapper for every route under `app/api/**` — **never return `error.message` to a client; use `dbError`.**
@@ -1336,7 +1335,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Data caveat: a stray `payout_cycles` row tagged `event` makes `event` look like a payout venue and raises bogus
   rent alerts for the recurring costs tagged `event`; delete it (see the Chunk 13 cleanup SQL).
 
-**Chunk 13b — Fixed costs that post themselves, venue flags** (`migration_recurring_and_venue_flags.sql` — applied as `recurring_and_venue_flags`)
+**Chunk 13b — Fixed costs that post themselves, venue flags** (`db/migration_recurring_and_venue_flags.sql` — applied as `recurring_and_venue_flags`)
 - Migration adds `venues.active / collects_payments / default_price` (Lanes = collects_payments), `expenses.recurring_id` +
   `recurring_month` with a unique index (one posting per fixed cost per month), and `recurring_expenses.starts_on / ends_on`.
 - `/recurring` is now the "Fixed costs" screen (nav label renamed; route unchanged): start/end dates added. `lib/fixed-costs.ts`
@@ -1348,7 +1347,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - `/entry` venue list = `active` and not `collects_payments`. Owner screens still list every venue (not changed).
 - Booking status is derived on read (cancelled / past → completed / else upcoming); the form's only choice is "Cancelled? Yes/No".
 
-**Chunk 13c — One clock, atomic entry save, notes, delete** (`migration_save_shift_entry.sql` — applied as `save_shift_entry`; the migrations are live, so deploy this code soon — production's old code still works because they are additive)
+**Chunk 13c — One clock, atomic entry save, notes, delete** (`db/migration_save_shift_entry.sql` — applied as `save_shift_entry`; the migrations are live, so deploy this code soon — production's old code still works because they are additive)
 - **One clock:** `lib/dates.ts` gains `currentMonthInKarachi`, `shiftMonth`, `formatMonthLabel`, `formatDate(date, {year})`, `hoursWorked`. Every
   per-screen copy of localToday/currentMonth/prevMonth/nextMonth/formatMonth(Label)/formatDate was deleted; clients use `todayInKarachi()`. **Never
   read the device clock for "today" or "this month".** (Asset age on `/assets` still uses the device clock for a months-since-purchase figure.)
@@ -1361,7 +1360,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - **Delete:** `DELETE /api/entries/[id]` (owner-only, via `supabaseAsActor` so `entry_audit` gets a `delete` row; expenses cascade). "Delete entry" button
   inside the owner edit sheet, behind a ConfirmDialog.
 
-**Chunk 11a — Users screen, self-set PINs, revocable sessions** (`migration_users_pins.sql` — applied as `users_pins`)
+**Chunk 11a — Users screen, self-set PINs, revocable sessions** (`db/migration_users_pins.sql` — applied as `users_pins`)
 - `users` gains `active`, `must_set_pin`, `pin_changed_at`, `session_version`. `lib/pin.ts`: `hashPin`/`verifyPin` (bcryptjs cost 12) and
   `isWeakPin` (4–8 digits; no repeated digit, no straight run up/down incl. wrap like 7890).
 - **Revocable sessions:** JWT carries `sv` + `mustSetPin`; owner sessions last 12h, staff 7 days. `lib/auth.ts` `getVerifiedSession()` does one
@@ -1391,6 +1390,14 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Verified read-only against production: /mine own-only + `user_id` ignored, bad month 400, audit 403 for staff / 200 for owner, duplicate without `entryId` → 409,
   collected row with `entryId` → 409, someone else's `entryId` → 404, malformed → 400. **Not verified:** an actual staff edit write and the browser UI.
 
+**Chunk 14a — Dead code and shared helpers** (refactor only, branch `chunk-14a-cleanup`, not merged)
+- `lib/format.ts` (`pkr`, `plural`) replaces 12 local `pkr()` copies (the 9 listed + Draws, Recurring, MyEntries). No local date/month helper copies remain.
+- `MonthSwitcher` gains `variant="pill"` (dashboard glass pill); `MonthPill` deleted.
+- `components/ExpenseForm.tsx` + `components/ExpenseList.tsx` (both take `variant="owner" | "employee"`) and `lib/useReceiptUpload.ts` are shared by `/expenses` and `/reimburse`; their field order, labels, payloads and permissions are unchanged. `ExpenseRow` type lives in `ExpenseList.tsx`.
+- Deleted unused `components/StatCard.tsx` and the 5 boilerplate `public/*.svg`; README rewritten.
+- All SQL moved to `db/`; `db/supabase_schema.sql` regenerated from the live DB (all tables, view, functions, triggers, indexes, RLS/grants).
+- `tsc`, `eslint`, `npm run build` clean. Not verified in a browser.
+
 ### In progress
 - **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
   its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
@@ -1416,7 +1423,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 
 ### Next phase
 - None queued. A future phase may add Google Calendar sync to bookings
-  (deferred, out of scope for Phase F — `migration_bookings.sql`'s comment
+  (deferred, out of scope for Phase F — `db/migration_bookings.sql`'s comment
   block notes it would only add columns, not restructure what's here).
   Wait for an explicit phase prompt before starting new work.
 
@@ -1432,7 +1439,7 @@ as prior phases). `bookings` confirmed empty and both test months'
   an httpOnly cookie (`lib/session.ts`, 7-day expiry), checked on every page
   route by `middleware.ts`. A 30-minute client-side idle timer
   (`components/BottomNav.tsx`) auto-signs-out on top of the manual button.
-- **Database**: Supabase Postgres (`supabase_schema.sql`). All reads/writes
+- **Database**: Supabase Postgres (`db/supabase_schema.sql`). All reads/writes
   go through `supabaseAdmin` (service-role key, server-only,
   `lib/supabase/server.ts`) inside API routes — RLS policies exist as a
   backstop, not as the primary access-control layer; that layer is the

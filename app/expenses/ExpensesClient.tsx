@@ -1,20 +1,21 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import BottomNav from "@/components/BottomNav";
 import PageHeader from "@/components/PageHeader";
 import Card from "@/components/Card";
-import Badge from "@/components/Badge";
 import Button from "@/components/Button";
 import Chip from "@/components/Chip";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import EmptyState from "@/components/EmptyState";
-import FormField, { MoneyField, InputStyles } from "@/components/FormField";
+import ExpenseForm from "@/components/ExpenseForm";
+import ExpenseList, { type ExpenseRow } from "@/components/ExpenseList";
+import { InputStyles } from "@/components/FormField";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
-import { CATEGORIES, type Category } from "@/lib/categories";
+import { CATEGORIES } from "@/lib/categories";
 import { defer } from "@/lib/defer";
-import { currentMonthInKarachi, formatMonthLabel, todayInKarachi, shiftMonth } from "@/lib/dates";
+import { currentMonthInKarachi, formatMonthLabel, shiftMonth } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -27,66 +28,9 @@ interface Props {
   employees: Employee[];
 }
 
-// Matches the SELECT in GET /api/expenses.
-interface ExpenseRow {
-  id: string;
-  expense_date: string;
-  category: string;
-  amount: number;
-  description: string | null;
-  receipt_url: string | null;
-  paid_by: "company" | "employee";
-  payer_user_id: string | null;
-  reimbursement_status: "pending" | "paid" | null;
-  related_user_id: string | null;
-  shift_entry_id: string | null;
-  venue_id: string | null;
-  logged_by: string;
-  payer: { name: string } | null;
-  related: { name: string } | null;
-  logger: { name: string } | null;
-  venues: { name: string } | null;
-}
-
-type PaidByChoice = "company" | "employee";
-
-interface FormState {
-  category: Category;
-  amount: string;
-  venueId: string;
-  expenseDate: string;
-  note: string;
-  paidBy: PaidByChoice;
-  payerUserId: string;
-  relatedUserId: string;
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number) {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function blankForm(): FormState {
-  return {
-    category: "Operational",
-    amount: "",
-    venueId: "",
-    expenseDate: todayInKarachi(),
-    note: "",
-    paidBy: "company",
-    payerUserId: "",
-    relatedUserId: "",
-  };
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function ExpensesClient({ user, venues, employees }: Props) {
-  const [form, setForm] = useState<FormState>(blankForm);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   // Filter state
@@ -101,20 +45,6 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
   const [pendingToggle, setPendingToggle] = useState<Set<string>>(new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  // Form validation
-  const [submitAttempted, setSubmitAttempted] = useState(false);
-  const amountError = (() => {
-    if (form.amount.trim() === "") return "Enter an amount";
-    const n = Number(form.amount);
-    if (n < 0) return "Can't be a negative number";
-    if (n <= 0) return "Enter an amount greater than 0";
-    return undefined;
-  })();
-  const payerError =
-    form.paidBy === "employee" && !form.payerUserId ? "Pick who paid" : undefined;
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });
@@ -148,69 +78,6 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
   useEffect(() => defer(() => { void fetchList(); }), [fetchList]);
 
   const visibleRows = filterCategory === "all" ? rows : rows.filter((r) => r.category === filterCategory);
-
-  const handleSubmit = async () => {
-    setSubmitAttempted(true);
-    if (amountError || payerError) {
-      showToast("error", amountError ?? payerError ?? "Fix the form and try again");
-      return;
-    }
-
-    setSubmitting(true);
-    let receiptPath: string | null = null;
-
-    try {
-      if (receiptFile) {
-        setUploading(true);
-        const fd = new FormData();
-        fd.append("file", receiptFile);
-        const upRes = await fetch("/api/expenses/upload", { method: "POST", body: fd });
-        setUploading(false);
-
-        if (!upRes.ok) {
-          const e = (await upRes.json()) as { error?: string };
-          showToast("error", e.error ?? "Receipt upload failed");
-          setSubmitting(false);
-          return;
-        }
-        const upData = (await upRes.json()) as { path: string };
-        receiptPath = upData.path;
-      }
-
-      const res = await fetch("/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: form.category,
-          amount: Number(form.amount),
-          venueId: form.venueId || null,
-          expenseDate: form.expenseDate,
-          description: form.note,
-          receiptPath,
-          paidBy: form.paidBy,
-          payerUserId: form.paidBy === "employee" ? form.payerUserId : null,
-          relatedUserId: form.category === "Salary" && form.relatedUserId ? form.relatedUserId : null,
-        }),
-      });
-
-      if (res.ok) {
-        showToast("success", "Expense logged!");
-        setForm(blankForm());
-        setSubmitAttempted(false);
-        setReceiptFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        void fetchList();
-      } else {
-        const e = (await res.json()) as { error?: string };
-        showToast("error", e.error ?? "Something went wrong");
-      }
-    } catch {
-      showToast("error", "Could not submit — check your connection");
-    } finally {
-      setSubmitting(false);
-      setUploading(false);
-    }
-  };
 
   const toggleStatus = async (row: ExpenseRow) => {
     const next = row.reimbursement_status === "paid" ? "pending" : "paid";
@@ -286,88 +153,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
 
-        {/* ── Log Expense Form ─────────────────────────────────── */}
-        <section>
-          <SectionLabel>Log Expense</SectionLabel>
-          <Card className="space-y-4">
-            <FormField label="Date">
-              <input type="date" value={form.expenseDate}
-                onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))}
-                className="input-base w-full" />
-            </FormField>
-
-            <FormField label="Category">
-              <select value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
-                className="input-base w-full">
-                {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
-            </FormField>
-
-            {form.category === "Salary" && (
-              <FormField label="Salary for">
-                <select value={form.relatedUserId}
-                  onChange={(e) => setForm((f) => ({ ...f, relatedUserId: e.target.value }))}
-                  className="input-base w-full">
-                  <option value="">— Not specific to one person —</option>
-                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
-              </FormField>
-            )}
-
-            <MoneyField label="Amount" value={form.amount}
-              onChange={(v) => setForm((f) => ({ ...f, amount: v }))}
-              error={submitAttempted ? amountError : undefined} />
-
-            <FormField label="Who paid?" error={submitAttempted ? payerError : undefined}>
-              <div className="flex gap-2">
-                <Chip size="md" active={form.paidBy === "company"} onClick={() => setForm((f) => ({ ...f, paidBy: "company" }))}>
-                  Company paid
-                </Chip>
-                <Chip size="md" active={form.paidBy === "employee"} onClick={() => setForm((f) => ({ ...f, paidBy: "employee" }))}>
-                  Staff member paid
-                </Chip>
-              </div>
-              {form.paidBy === "employee" && (
-                <select value={form.payerUserId}
-                  onChange={(e) => setForm((f) => ({ ...f, payerUserId: e.target.value }))}
-                  className="input-base w-full mt-2">
-                  <option value="">— Who? —</option>
-                  {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
-              )}
-            </FormField>
-
-            <FormField label="Venue (optional)">
-              {venues.length === 0 ? (
-                <p className="text-sm text-text-muted">No venues configured</p>
-              ) : (
-                <select value={form.venueId} onChange={(e) => setForm((f) => ({ ...f, venueId: e.target.value }))}
-                  className="input-base w-full">
-                  <option value="">— None —</option>
-                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
-              )}
-            </FormField>
-
-            <FormField label="Description">
-              <input type="text" placeholder="e.g. August rent" value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                className="input-base w-full" />
-            </FormField>
-
-            <FormField label={<>Receipt photo <span className="font-normal">(optional)</span></>}>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf"
-                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium cursor-pointer text-text-muted bg-bg border border-[rgba(200,212,224,0.2)] rounded-[10px] px-3 py-2" />
-              {receiptFile && <p className="text-xs mt-1 text-gold">{receiptFile.name}</p>}
-            </FormField>
-
-            <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting || uploading}>
-              {uploading ? "Uploading receipt…" : submitting ? "Saving…" : "Log Expense"}
-            </Button>
-          </Card>
-        </section>
+        <ExpenseForm variant="owner" venues={venues} employees={employees} onToast={showToast} onLogged={() => { void fetchList(); }} />
 
         {/* ── Filters + Totals ─────────────────────────────────── */}
         <section>
@@ -410,73 +196,16 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
           </Card>
         </section>
 
-        {/* ── List ─────────────────────────────────────────────── */}
-        <section className="space-y-2">
-          {listLoading ? (
-            <EmptyState message="Loading…" />
-          ) : listError ? (
-            <EmptyState error message={listError} onRetry={() => { void fetchList(); }} />
-          ) : visibleRows.length === 0 ? (
-            <EmptyState message="No expenses for this period" />
-          ) : (
-            visibleRows.map((row) => {
-              const isStaffPaid = row.paid_by === "employee";
-              const isPaid = row.reimbursement_status === "paid";
-              const isShiftLinked = !!row.shift_entry_id;
-              const isToggling = pendingToggle.has(row.id);
-
-              return (
-                <Card key={row.id} size="sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge>{row.category}</Badge>
-                        {row.related && <span className="text-xs text-text-muted">for {row.related.name}</span>}
-                        {row.venues && <span className="text-xs text-text-muted">· {row.venues.name}</span>}
-                        {isStaffPaid && (
-                          <Badge
-                            tone={isPaid ? "gold" : "danger"}
-                            disabled={isToggling}
-                            onClick={() => { if (!isToggling) void toggleStatus(row); }}
-                          >
-                            {isPaid ? "Paid back" : `Owes ${row.payer?.name ?? "employee"}`}
-                          </Badge>
-                        )}
-                      </div>
-                      {row.description && <p className="text-sm mt-1 truncate text-text">{row.description}</p>}
-                      <p className="text-xs mt-1 text-text-muted">
-                        {new Date(row.expense_date + "T00:00:00").toLocaleDateString("en-PK", {
-                          day: "numeric", month: "short",
-                        })}
-                        {row.receipt_url && (
-                          <>
-                            {" · "}
-                            <a href={`/api/expenses/${row.id}/receipt`} target="_blank" rel="noopener noreferrer" className="text-gold">
-                              Receipt ↗
-                            </a>
-                          </>
-                        )}
-                      </p>
-                      {isShiftLinked && (
-                        <p className="text-xs mt-1 text-text-muted">
-                          From {row.logger?.name ?? "an employee"}&apos;s shift entry — edit the entry instead
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className="text-sm font-semibold text-text">{pkr(row.amount)}</span>
-                      {!isShiftLinked && (
-                        <Button variant="danger" size="xs" onClick={() => setConfirmDeleteId(row.id)}>
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </section>
+        <ExpenseList
+          variant="owner"
+          rows={visibleRows}
+          loading={listLoading}
+          error={listError}
+          onRetry={() => { void fetchList(); }}
+          onDelete={setConfirmDeleteId}
+          onToggleStatus={(row) => { void toggleStatus(row); }}
+          togglingIds={pendingToggle}
+        />
       </main>
 
       <BottomNav role={user.role} />

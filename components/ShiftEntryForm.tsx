@@ -7,6 +7,7 @@ import FormField, { MoneyField, InputStyles } from "./FormField";
 import SectionLabel from "./SectionLabel";
 import { SHIFT_EXPENSE_CATEGORIES } from "@/lib/categories";
 import { hoursWorked, todayInKarachi } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -108,10 +109,6 @@ export function blankShiftEntryValues(): ShiftEntryFormValues {
 function parseNum(val: string): number {
   const n = parseFloat(val);
   return isNaN(n) || n < 0 ? 0 : n;
-}
-
-function pkr(amount: number): string {
-  return `PKR ${Math.round(amount).toLocaleString("en-PK")}`;
 }
 
 const NEGATIVE_MSG = "Can't be a negative number";

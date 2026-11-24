@@ -13,6 +13,7 @@ import Sheet from "@/components/Sheet";
 import Toast, { type ToastState } from "@/components/Toast";
 import { defer } from "@/lib/defer";
 import { formatDate, todayInKarachi } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,10 +56,6 @@ interface EditForm {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number): string {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
 
 function blankNewCycleForm(venues: Venue[]): NewCycleForm {
   return {

@@ -13,6 +13,7 @@ import SectionLabel from "@/components/SectionLabel";
 import Sheet from "@/components/Sheet";
 import Toast, { type ToastState } from "@/components/Toast";
 import { CATEGORIES, type Category } from "@/lib/categories";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,10 +49,6 @@ interface FormState {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number) {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
 
 function blankForm(): FormState {
   return { name: "", category: "Rent", amount: "", dueDay: "1", venueId: "", startsOn: "", endsOn: "" };

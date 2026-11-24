@@ -12,6 +12,7 @@ import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { defer } from "@/lib/defer";
 import { todayInKarachi } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,10 +46,6 @@ interface FormState {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number) {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
 
 function blankForm(): FormState {
   return {

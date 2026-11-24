@@ -21,6 +21,7 @@ import BookingForm, {
 import type { BookingStatus } from "@/lib/supabase/types";
 import { defer } from "@/lib/defer";
 import { formatDate } from "@/lib/dates";
+import { pkr } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,10 +44,6 @@ interface BookingRow {
 type ListFilter = "upcoming" | "past";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-function pkr(n: number): string {
-  return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
 
 function rowToFormValues(row: BookingRow): BookingFormValues {
   return {
