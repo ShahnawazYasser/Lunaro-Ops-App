@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, dbError, fail } from "@/lib/api";
+import { requireOwner, dbError, dataError, fail } from "@/lib/api";
+import { getPayouts } from "@/lib/data/payouts";
 import { isIsoDate, money } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -12,24 +13,16 @@ export const preferredRegion = "sin1";
 // once known (see migration_payout_due_manual.sql). Rent is deducted from
 // whichever cycle it lands in (rent_deducted), not on a fixed monthly day.
 
-const SELECT = `
-  id, venue_id, cycle_start, cycle_end, payout_due, gross_amount, rent_deducted,
-  received_on, received_amount, venues(name)
-`;
-
 // ── GET /api/payouts ─────────────────────────────────────────────────────
 export async function GET() {
   const session = await requireOwner();
   if (session instanceof NextResponse) return session;
 
-  const { data, error } = await supabaseAdmin
-    .from("payout_cycles")
-    .select(SELECT)
-    .order("cycle_start", { ascending: false });
-
-  if (error) return dbError(error);
-
-  return NextResponse.json({ cycles: data ?? [] });
+  try {
+    return NextResponse.json(await getPayouts());
+  } catch (e) {
+    return dataError(e);
+  }
 }
 
 // ── POST /api/payouts ────────────────────────────────────────────────────

@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, dbError, fail } from "@/lib/api";
+import { requireOwner, dbError, dataError, fail } from "@/lib/api";
+import { getAssets } from "@/lib/data/assets";
 import { int, isIsoDate, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
 
 // Assets + straight-line depreciation (Chunk 2). Owner-only, every method.
-// Monthly depreciation is never stored here — it's computed live by the
-// asset_depreciation view (see migration_finance_v2.sql).
-const SELECT = `
-  id, name, cost, purchase_date, useful_life_months, salvage_value, venue_id, created_at,
-  venues(name)
-`;
 
 // ── GET /api/assets ─────────────────────────────────────────────────────────
 export async function GET() {
   const session = await requireOwner();
   if (session instanceof NextResponse) return session;
 
-  const { data, error } = await supabaseAdmin
-    .from("assets")
-    .select(SELECT)
-    .order("purchase_date", { ascending: false });
-
-  if (error) return dbError(error);
-
-  return NextResponse.json({ assets: data ?? [] });
+  try {
+    return NextResponse.json(await getAssets());
+  } catch (e) {
+    return dataError(e);
+  }
 }
 
 // ── POST /api/assets ─────────────────────────────────────────────────────────

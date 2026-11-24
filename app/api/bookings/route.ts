@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, dbError, fail } from "@/lib/api";
+import { requireOwner, dbError, dataError, fail } from "@/lib/api";
+import { getBookings } from "@/lib/data/bookings";
 import { isIsoDate, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { todayInKarachi } from "@/lib/dates";
 
 export const preferredRegion = "sin1";
 
@@ -19,63 +19,21 @@ function optStr(v: unknown, maxLen: number): string | undefined {
 // status play no role in revenue — only advance_date/final_date do, and
 // only when their paired amount is set.
 
-const SELECT = `
-  id, client_name, event_name, package, amount_charged, event_date, notes,
-  advance_amount, advance_date, final_amount, final_date,
-  status, created_by, created_at, updated_at
-`;
-
-interface BookingRow {
-  id: string;
-  status: string;
-  event_date: string;
-  amount_charged: number;
-  advance_amount: number | null;
-  final_amount: number | null;
-  [key: string]: unknown;
-}
-
-// Display status is derived, not stored: nobody maintains the column, so only
-// 'cancelled' is read from it. Otherwise past events are 'completed' and the
-// rest are 'upcoming' (Karachi calendar day).
-function displayStatus(row: BookingRow, today: string): "upcoming" | "completed" | "cancelled" {
-  if (row.status === "cancelled") return "cancelled";
-  return row.event_date < today ? "completed" : "upcoming";
-}
-
-function withBalanceDue<T extends BookingRow>(row: T, today: string) {
-  const received = (row.advance_amount ?? 0) + (row.final_amount ?? 0);
-  return { ...row, status: displayStatus(row, today), balance_due: row.amount_charged - received };
-}
-
 // ── GET /api/bookings?filter=upcoming|past|all ─────────────────────────────
 export async function GET(request: NextRequest) {
   const session = await requireOwner();
   if (session instanceof NextResponse) return session;
 
-  const { searchParams } = new URL(request.url);
-  const filter = searchParams.get("filter") ?? "upcoming";
+  const filter = new URL(request.url).searchParams.get("filter") ?? "upcoming";
   if (filter !== "upcoming" && filter !== "past" && filter !== "all") {
     return NextResponse.json({ error: "Invalid filter" }, { status: 400 });
   }
 
-  const today = todayInKarachi();
-
-  let query = supabaseAdmin.from("bookings").select(SELECT);
-
-  if (filter === "upcoming") {
-    query = query.gte("event_date", today).neq("status", "cancelled").order("event_date", { ascending: true });
-  } else if (filter === "past") {
-    // Everything not "upcoming": past-dated, or cancelled regardless of date.
-    query = query.or(`event_date.lt.${today},status.eq.cancelled`).order("event_date", { ascending: false });
-  } else {
-    query = query.order("event_date", { ascending: false });
+  try {
+    return NextResponse.json(await getBookings(filter));
+  } catch (e) {
+    return dataError(e);
   }
-
-  const { data, error } = await query;
-  if (error) return dbError(error);
-
-  return NextResponse.json({ bookings: (data ?? []).map((row) => withBalanceDue(row as BookingRow, today)) });
 }
 
 // ── POST /api/bookings ──────────────────────────────────────────────────────

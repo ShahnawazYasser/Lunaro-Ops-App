@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner, requireSession, fail, dbError } from "@/lib/api";
+import { requireOwner, requireSession, fail, dbError, dataError } from "@/lib/api";
+import { getEntries } from "@/lib/data/entries";
 import { EDIT_WINDOW_DAYS, entryRecord, parseEntryBody } from "@/lib/entry-input";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
-import { addDays, formatDate, monthRange, todayInKarachi } from "@/lib/dates";
+import { addDays, formatDate, todayInKarachi } from "@/lib/dates";
 import { isMonth, isUuid } from "@/lib/validate";
 
 export const preferredRegion = "sin1";
@@ -19,47 +20,11 @@ export async function GET(request: NextRequest) {
     return fail(400, "Invalid month (expected YYYY-MM)");
   }
 
-  const { startDate, endDate } = monthRange(month);
-
-  // Shift-linked expenses now live in the unified `expenses` table (Phase D),
-  // joined on shift_entry_id. Aliased back to `entry_expenses` so the
-  // response shape EntriesClient reads is unchanged.
-  const { data, error } = await supabaseAdmin
-    .from("shift_entries")
-    .select(`
-      id, user_id, entry_date, venue_id, event_name,
-      total_prints, extra_prints, system_prints_500, system_prints_250,
-      free_prints, waste_prints, price_charged, cash_received, bank_received,
-      clock_in, clock_out, notes, cash_collected, cash_collected_at,
-      last_edited_by, last_edited_at,
-      created_at,
-      users!shift_entries_user_id_fkey!inner(name),
-      venues!inner(name),
-      entry_expenses:expenses(description, amount, category)
-    `)
-    .gte("entry_date", startDate)
-    .lte("entry_date", endDate)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (error) return dbError(error);
-
-  // How many changes each entry has in its history (the insert counts as 1), so
-  // the list can flag entries changed after they were first saved.
-  const entries = data ?? [];
-  const auditCounts = new Map<string, number>();
-  if (entries.length > 0) {
-    const { data: auditRows, error: auditError } = await supabaseAdmin
-      .from("entry_audit")
-      .select("entry_id")
-      .in("entry_id", entries.map((e) => e.id));
-    if (auditError) return dbError(auditError);
-    for (const r of auditRows ?? []) auditCounts.set(r.entry_id, (auditCounts.get(r.entry_id) ?? 0) + 1);
+  try {
+    return NextResponse.json(await getEntries(month));
+  } catch (e) {
+    return dataError(e);
   }
-
-  return NextResponse.json({
-    entries: entries.map((e) => ({ ...e, audit_count: auditCounts.get(e.id) ?? 0 })),
-  });
 }
 
 export async function POST(request: NextRequest) {

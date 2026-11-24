@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getSession, type SessionUser } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
@@ -10,7 +11,8 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 //
 // Returns null when there is no cookie, the user is missing or inactive, or
 // the token's version is out of date. `mustSetPin` is the database's value.
-export async function getVerifiedSession(): Promise<SessionUser | null> {
+// Wrapped in React cache(): the layout and the page of one render share a single lookup.
+export const getVerifiedSession = cache(async (): Promise<SessionUser | null> => {
   const token = await getSession();
   if (!token) return null;
 
@@ -34,4 +36,4 @@ export async function getVerifiedSession(): Promise<SessionUser | null> {
     sv: data.session_version,
     mustSetPin: data.must_set_pin,
   };
-}
+});

@@ -1398,6 +1398,32 @@ as prior phases). `bookings` confirmed empty and both test months'
 - All SQL moved to `db/`; `db/supabase_schema.sql` regenerated from the live DB (all tables, view, functions, triggers, indexes, RLS/grants).
 - `tsc`, `eslint`, `npm run build` clean. Not verified in a browser.
 
+**Chunk 14b — One shell, data loaded on the server** (branch `chunk-14b-shell`, on top of 14a; not merged)
+- **Route group `app/(app)/`** holds every signed-in screen (dashboard, entries, entry, my-entries, expenses, reimburse, bookings, payouts, assets,
+  recurring, draws, attendance, users). URLs unchanged. `app/(app)/layout.tsx` checks the session once and renders `components/AppShell.tsx`
+  (the old `BottomNav`: nav, idle timer, desktop left padding, mobile bottom padding). Pages no longer render a nav, `pb-24`, or the inline shell style.
+  `/login` and `/set-pin` stay OUTSIDE the group on purpose (full-screen keypads; a person on a temporary PIN must reach `/set-pin` with no nav).
+  Pages still do their own `getVerifiedSession()` + role check (a layout doesn't re-run on client navigation). `getVerifiedSession` is wrapped in React
+  `cache()` so layout + page share one lookup.
+- **`lib/data/*.ts`** (`dashboard`, `entries` [`getEntries`, `getMyEntries`], `expenses`, `attendance`, `payouts`, `assets`, `bookings`) own the GET queries.
+  API routes and pages both call them — never duplicate a query. They throw `DataError` (`lib/data/errors.ts`); routes turn it into a response with
+  `dataError()` in `lib/api.ts`, pages let it reach the error boundary. Callers do the auth check; `getExpenses`/`getMyEntries` take the session user so
+  employees only ever get their own rows.
+- **Pages load the first screenful on the server** and pass `initial` (+ `initialMonth`) to the client; every page under `(app)` exports `preferredRegion = "sin1"`.
+  `app/(app)/loading.tsx` is the instant skeleton.
+- **`lib/useMonthData.ts`**: keyed client cache (`"<screen>:<month>[:<filter>]"`), seeded from `initial` (not refetched on mount), cached keys show instantly
+  and refetch quietly, `refresh()`, `setData()` for optimistic updates, `invalidate(prefixes, keepKey?)`, `prefetch()`. Browser-only store (never touched on the
+  server). Used by Dashboard, Entries, My entries, Expenses, My expenses (`reimburse`), Attendance, Bookings, Payouts, Assets. **Any save/delete must
+  `invalidate` the other screens' keys it affects** (anything touching money or entries → `"dashboard:"`). The dashboard warms the previous month on idle.
+- **`middleware.ts` gained an owner-only page list** (early 307 for employees). Needed because `loading.tsx` makes a page's own `redirect()` arrive as a
+  200 + meta refresh once the skeleton has started streaming. The page-level DB role check is still the authority; keep both lists in step.
+- Fixed while typing the data layer: `expenses.description` is nullable — entry expense rows now tolerate `null` (client types + `?? ""` in the edit form).
+- Removed the unused `user` prop from Assets/Bookings/Draws/Expenses/Payouts/Recurring clients and the unused venues query on `/draws`.
+- Verified against production (read-only): a build of the 14a commit and a build of this branch were run side by side; 79 GET requests (both roles, 6 months,
+  every filter, guards and bad input) returned identical JSON/status, and all 15 page URLs returned identical status/redirects for owner and employee.
+  `tsc`, `eslint`, `npm run build` clean. **Not verified in a browser:** nav not remounting, hydration of the seeded cache, month switching from cache,
+  the loading skeleton, and the idle prefetch — see the test list.
+
 ### In progress
 - **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
   its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
