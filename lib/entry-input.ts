@@ -163,3 +163,7 @@ export function entryRecord(v: ParsedEntry) {
     notes: v.notes,
   };
 }
+
+// Staff can edit their own uncollected, owner-untouched entry for this many
+// days after its date (POST /api/entries with entryId; "editable" in /mine).
+export const EDIT_WINDOW_DAYS = 7;

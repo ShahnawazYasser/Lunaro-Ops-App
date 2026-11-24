@@ -1377,6 +1377,20 @@ as prior phases). `bookings` confirmed empty and both test months'
 - **Employee lists:** `/expenses` pickers = active staff only; `/api/attendance` and `/api/dashboard` show a deactivated employee only in months where
   they have at least one shift entry. (`/api/expenses` POST does not check that a chosen payer/"salary for" is active — pickers prevent it.)
 
+**Chunk 11b — My entries, staff self-edit, change history** (no migration)
+- `GET /api/entries/mine?month=` (any role): ONLY the session user's entries — there is no user-id parameter, anything sent is ignored. Rows carry `collected`
+  and `editable` (not collected, `last_edited_by` null, entry date within `EDIT_WINDOW_DAYS` = 7, in `lib/entry-input.ts`), plus `summary` and `availableMonths`.
+  `cashNotYetCollected` is for the selected month only.
+- `/my-entries` (all roles; employee nav + owner secondary nav): month switcher limited to months with entries (plus this month), summary strip with
+  "Cash you are holding", "With you"/"Collected" chips, detail on tap, Edit (existing `ShiftEntryForm` → `POST /api/entries` with `entryId`) or one plain reason line.
+- **`POST /api/entries` no longer silently updates.** Without `entryId`, an existing user+date+venue returns 409 "You already logged <venue> for <date>. Open it in
+  My entries to change it." With `entryId` the row must be the caller's own (404 otherwise), unlocked (409 lock rule), unchanged date, and within the 7-day edit
+  window. **The 2-day new-entry window does not apply to edits** (the date can't change) — so staff can fix an entry up to 7 days old but only log new ones 2 days back.
+- Owner: `GET /api/entries/[id]/audit` (owner-only history with actor names). Entries detail shows "Changes" (field `from → to`, Karachi time, red
+  "Changed after collection" tag when `was_collected`). `GET /api/entries` returns `audit_count`; the list's "Edited" tag shows for owner-edited OR more than one audit row.
+- Verified read-only against production: /mine own-only + `user_id` ignored, bad month 400, audit 403 for staff / 200 for owner, duplicate without `entryId` → 409,
+  collected row with `entryId` → 409, someone else's `entryId` → 404, malformed → 400. **Not verified:** an actual staff edit write and the browser UI.
+
 ### In progress
 - **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
   its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
