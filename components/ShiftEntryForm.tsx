@@ -6,6 +6,7 @@ import Card from "./Card";
 import FormField, { MoneyField, InputStyles } from "./FormField";
 import SectionLabel from "./SectionLabel";
 import { SHIFT_EXPENSE_CATEGORIES } from "@/lib/categories";
+import { hoursWorked, todayInKarachi } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export interface ShiftEntryFormValues {
   priceCharged: string;
   cashReceived: string;
   bankReceived: string;
+  notes: string;
   expenses: ExpenseValue[];
 }
 
@@ -58,6 +60,7 @@ export interface ShiftEntryPayload {
   priceCharged: number | null;
   cashReceived: number;
   bankReceived: number;
+  notes: string | null;
   expenses: { description: string; amount: number; category: string }[];
 }
 
@@ -81,17 +84,9 @@ interface Props {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-export function localToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export function blankShiftEntryValues(): ShiftEntryFormValues {
   return {
-    entryDate: localToday(),
+    entryDate: todayInKarachi(),
     clockIn: "",
     clockOut: "",
     venueId: "",
@@ -105,6 +100,7 @@ export function blankShiftEntryValues(): ShiftEntryFormValues {
     priceCharged: "",
     cashReceived: "",
     bankReceived: "",
+    notes: "",
     expenses: [{ description: "", amount: "", category: "Operational" }],
   };
 }
@@ -112,19 +108,6 @@ export function blankShiftEntryValues(): ShiftEntryFormValues {
 function parseNum(val: string): number {
   const n = parseFloat(val);
   return isNaN(n) || n < 0 ? 0 : n;
-}
-
-function hoursWorked(clockIn: string, clockOut: string): string {
-  if (!clockIn || !clockOut) return "";
-  const [inH, inM] = clockIn.split(":").map(Number);
-  const [outH, outM] = clockOut.split(":").map(Number);
-  const diff = outH * 60 + outM - (inH * 60 + inM);
-  if (diff <= 0) return "";
-  const h = Math.floor(diff / 60);
-  const m = diff % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} hrs`;
-  return `${h} hrs ${m} min`;
 }
 
 function pkr(amount: number): string {
@@ -251,6 +234,10 @@ export default function ShiftEntryForm({
       onError("Please enter the event name");
       return;
     }
+    if (form.clockIn && form.clockOut && !hoursWorked(form.clockIn, form.clockOut)) {
+      onError("Check the times");
+      return;
+    }
     if (hasErrors) {
       onError("Fix the highlighted fields before submitting");
       return;
@@ -271,6 +258,7 @@ export default function ShiftEntryForm({
       priceCharged: form.priceCharged.trim() === "" ? null : parseFloat(form.priceCharged),
       cashReceived: parseNum(form.cashReceived),
       bankReceived: parseNum(form.bankReceived),
+      notes: form.notes.trim() || null,
       expenses: form.expenses
         .filter((e) => e.description.trim() && parseNum(e.amount) > 0)
         .map((e) => ({
@@ -338,6 +326,9 @@ export default function ShiftEntryForm({
           <p className="text-sm text-gold">
             Hours worked: <span className="font-semibold">{worked}</span>
           </p>
+        )}
+        {!worked && form.clockIn && form.clockOut && (
+          <p className="text-sm text-danger">Check the times</p>
         )}
 
         {/* Venue */}
@@ -529,6 +520,21 @@ export default function ShiftEntryForm({
             + Add expense
           </button>
         )}
+      </Section>
+
+      {/* ── Notes ─────────────────────────────────────────────── */}
+      <Section title="Notes">
+        <FormField label="Anything the owner should know? (optional)">
+          <textarea
+            rows={3}
+            maxLength={300}
+            placeholder="e.g. Printer jammed for an hour"
+            value={form.notes}
+            disabled={disabled}
+            onChange={(e) => setField("notes", e.target.value)}
+            className="input-base w-full"
+          />
+        </FormField>
       </Section>
 
       {/* ── Live Summary ─────────────────────────────────────── */}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, dbError } from "@/lib/api";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { isCategory } from "@/lib/categories";
-import { int, money, str } from "@/lib/validate";
+import { int, isIsoDate, money, str } from "@/lib/validate";
 import type { Database } from "@/lib/supabase/types";
 
 export const preferredRegion = "sin1";
@@ -15,6 +15,8 @@ interface PatchBody {
   amount?: number;
   dueDay?: number;
   venueId?: string | null;
+  startsOn?: string | null;
+  endsOn?: string | null;
   active?: boolean;
 }
 
@@ -66,6 +68,17 @@ export async function PATCH(
     update.due_day = body.dueDay;
   }
   if (body.venueId !== undefined) update.venue_id = body.venueId || null;
+  for (const [key, col] of [["startsOn", "starts_on"], ["endsOn", "ends_on"]] as const) {
+    const v = body[key];
+    if (v === undefined) continue;
+    if (v && !isIsoDate(v)) {
+      return NextResponse.json({ error: "Dates must look like 2026-11-01" }, { status: 400 });
+    }
+    update[col] = v || null;
+  }
+  if (update.starts_on && update.ends_on && update.ends_on < update.starts_on) {
+    return NextResponse.json({ error: "The end date can't be before the start date" }, { status: 400 });
+  }
   if (body.active !== undefined) {
     if (typeof body.active !== "boolean") {
       return NextResponse.json({ error: "active must be true or false" }, { status: 400 });

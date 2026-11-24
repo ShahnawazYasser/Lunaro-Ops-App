@@ -11,6 +11,7 @@ import FormField, { MoneyField, InputStyles } from "@/components/FormField";
 import MonthSwitcher from "@/components/MonthSwitcher";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
+import { currentMonthInKarachi, formatMonthLabel, shiftMonth, todayInKarachi } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,29 +31,6 @@ interface DrawRow {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function currentMonth(): string {
-  return localToday().slice(0, 7);
-}
-
-function shiftMonth(m: string, delta: number): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonth(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function pkr(n: number) {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
@@ -60,7 +38,7 @@ function pkr(n: number) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function DrawsClient({ user }: Props) {
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(currentMonthInKarachi);
   const [rows, setRows] = useState<DrawRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -68,7 +46,7 @@ export default function DrawsClient({ user }: Props) {
   const [reloadTick, setReloadTick] = useState(0);
 
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(localToday);
+  const [date, setDate] = useState(todayInKarachi);
   const [note, setNote] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -230,7 +208,7 @@ export default function DrawsClient({ user }: Props) {
 
         {/* ── List ─────────────────────────────────────────────── */}
         <section className="space-y-3">
-          <MonthSwitcher label={formatMonth(month)}
+          <MonthSwitcher label={formatMonthLabel(month)}
             onPrev={() => changeMonth(-1)} onNext={() => changeMonth(1)} />
 
           <div className="flex items-center justify-between">

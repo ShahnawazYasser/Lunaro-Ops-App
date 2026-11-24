@@ -9,6 +9,7 @@ import Spinner from "@/components/Spinner";
 import Card from "@/components/Card";
 import Badge from "@/components/Badge";
 import Button from "@/components/Button";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import Sheet from "@/components/Sheet";
 import Toast, { type ToastState } from "@/components/Toast";
 import EmptyState from "@/components/EmptyState";
@@ -19,6 +20,7 @@ import ShiftEntryForm, {
   type Venue,
 } from "@/components/ShiftEntryForm";
 import { defer } from "@/lib/defer";
+import { currentMonthInKarachi, formatDate, formatMonthLabel, hoursWorked, shiftMonth } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,36 +57,6 @@ interface EntryRow {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function prevMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function nextMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonthLabel(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long", year: "numeric",
-  });
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
-    day: "numeric", month: "short",
-  });
-}
-
 function formatEditedAt(ts: string): string {
   return new Date(ts).toLocaleString("en-PK", {
     day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
@@ -97,19 +69,6 @@ function pkr(n: number): string {
 }
 
 // clock_in/clock_out come back from Postgres as "HH:MM:SS"
-function hoursWorked(clockIn: string | null, clockOut: string | null): string {
-  if (!clockIn || !clockOut) return "—";
-  const [inH, inM] = clockIn.split(":").map(Number);
-  const [outH, outM] = clockOut.split(":").map(Number);
-  const diff = outH * 60 + outM - (inH * 60 + inM);
-  if (diff <= 0) return "—";
-  const h = Math.floor(diff / 60);
-  const m = diff % 60;
-  if (h === 0) return `${m} min`;
-  if (m === 0) return `${h} hrs`;
-  return `${h} hrs ${m} min`;
-}
-
 function venueLabel(row: EntryRow): string {
   return row.venue_id === "event" ? (row.event_name ?? "Event") : row.venues.name;
 }
@@ -131,6 +90,7 @@ function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
     priceCharged: row.price_charged === null ? "" : String(row.price_charged),
     cashReceived: String(row.cash_received),
     bankReceived: String(row.bank_received),
+    notes: row.notes ?? "",
     expenses: row.entry_expenses.length
       ? row.entry_expenses.map((e) => ({
           description: e.description,
@@ -144,13 +104,15 @@ function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function EntriesClient({ venues }: Props) {
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(currentMonthInKarachi);
   const [rows, setRows] = useState<EntryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pendingCollect, setPendingCollect] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<EntryRow | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
@@ -251,12 +213,34 @@ export default function EntriesClient({ venues }: Props) {
     }
   };
 
+  const deleteEntry = async (row: EntryRow) => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/entries/${row.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setConfirmDelete(false);
+        setEditing(null);
+        showToast("success", "Entry deleted");
+        await fetchEntries(month);
+      } else {
+        const data = (await res.json()) as { error?: string };
+        showToast("error", data.error ?? "Couldn't delete this entry");
+        setConfirmDelete(false);
+      }
+    } catch {
+      showToast("error", "Could not delete — check your connection");
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen pb-24 bg-bg text-text">
       <Toast toast={toast} />
 
       {editing && (
-        <Sheet title="Edit entry" subtitle={`${editing.users.name} · ${formatDate(editing.entry_date)}`} onClose={() => setEditing(null)}>
+        <Sheet title="Edit entry" subtitle={`${editing.users.name} · ${formatDate(editing.entry_date, { year: false })}`} onClose={() => setEditing(null)}>
           <ShiftEntryForm
             venues={venues}
             initialValues={rowToFormValues(editing)}
@@ -266,11 +250,30 @@ export default function EntriesClient({ venues }: Props) {
             onSubmit={(payload) => saveEdit(editing, payload)}
             onError={(msg) => showToast("error", msg)}
           />
+          <Button
+            variant="danger"
+            size="lg"
+            className="w-full mt-4"
+            disabled={saving || deleting}
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete entry
+          </Button>
         </Sheet>
       )}
 
+      {editing && confirmDelete && (
+        <ConfirmDialog
+          title="Delete this entry?"
+          message="Its expenses are deleted too. The change history is kept."
+          busy={deleting}
+          onConfirm={() => { void deleteEntry(editing); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
       <PageHeader title="Entries">
-        <MonthSwitcher label={formatMonthLabel(month)} onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+        <MonthSwitcher label={formatMonthLabel(month)} onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
       </PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={() => { void fetchEntries(month); }} />}
@@ -338,7 +341,7 @@ export default function EntriesClient({ venues }: Props) {
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{row.users.name}</p>
                         <p className="text-xs text-text-muted">
-                          {venueLabel(row)} · {formatDate(row.entry_date)}
+                          {venueLabel(row)} · {formatDate(row.entry_date, { year: false })}
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           {row.cash_collected && <Badge shape="tag">Collected</Badge>}
@@ -352,7 +355,7 @@ export default function EntriesClient({ venues }: Props) {
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-2 border-t border-border/70">
-                    <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
+                    <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out) || "—"} />
                     <StatLine label="Amount received" value={pkr(amountReceived)} />
                     <StatLine label="Total prints" value={`${row.total_prints}`} />
                     <StatLine label="Free prints" value={`${row.free_prints}`} />
@@ -364,7 +367,7 @@ export default function EntriesClient({ venues }: Props) {
                     <DetailSection title="Shift">
                       <StatLine label="Clock in" value={row.clock_in?.slice(0, 5) ?? "—"} />
                       <StatLine label="Clock out" value={row.clock_out?.slice(0, 5) ?? "—"} />
-                      <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out)} />
+                      <StatLine label="Hours worked" value={hoursWorked(row.clock_in, row.clock_out) || "—"} />
                     </DetailSection>
 
                     <DetailSection title="Prints">

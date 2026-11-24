@@ -10,6 +10,8 @@ export default async function EntryPage() {
   const { data: venues } = await supabaseAdmin
     .from("venues")
     .select("id, name")
+    .eq("active", true)
+    .eq("collects_payments", false) // staff never log at payout venues (Lanes)
     .order("name");
 
   return (

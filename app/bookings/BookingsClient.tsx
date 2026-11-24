@@ -20,6 +20,7 @@ import BookingForm, {
 } from "@/components/BookingForm";
 import type { BookingStatus } from "@/lib/supabase/types";
 import { defer } from "@/lib/defer";
+import { formatDate } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,12 +48,6 @@ function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
-    day: "numeric", month: "short", year: "numeric",
-  });
-}
-
 function rowToFormValues(row: BookingRow): BookingFormValues {
   return {
     clientName: row.client_name,
@@ -65,7 +60,7 @@ function rowToFormValues(row: BookingRow): BookingFormValues {
     advanceDate: row.advance_date ?? "",
     finalAmount: row.final_amount != null ? String(row.final_amount) : "",
     finalDate: row.final_date ?? "",
-    status: row.status,
+    status: row.status === "cancelled" ? "cancelled" : "upcoming",
   };
 }
 

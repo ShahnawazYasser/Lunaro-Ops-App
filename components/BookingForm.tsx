@@ -6,6 +6,7 @@ import Button from "./Button";
 import Card from "./Card";
 import FormField, { MoneyField, InputStyles } from "./FormField";
 import SectionLabel from "./SectionLabel";
+import { todayInKarachi } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ interface Props {
   submittingLabel?: string;
   /** Parent-owned in-flight state — disables the submit button. */
   submitting: boolean;
-  /** Edit mode only: reveals the Final Payment section and status picker. */
+  /** Edit mode only: reveals the Final Payment section and the Cancelled? picker. */
   showFinalPayment?: boolean;
   onSubmit: (payload: BookingPayload) => void | Promise<void>;
   /** Form-level validation messages the parent should surface (e.g. a toast). */
@@ -54,21 +55,13 @@ interface Props {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-export function localToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export function blankBookingValues(): BookingFormValues {
   return {
     clientName: "",
     eventName: "",
     package: "",
     amountCharged: "",
-    eventDate: localToday(),
+    eventDate: todayInKarachi(),
     notes: "",
     advanceAmount: "",
     advanceDate: "",
@@ -113,14 +106,14 @@ export default function BookingForm({
     setForm((f) => ({
       ...f,
       advanceAmount: v,
-      advanceDate: v.trim() && !f.advanceDate ? localToday() : f.advanceDate,
+      advanceDate: v.trim() && !f.advanceDate ? todayInKarachi() : f.advanceDate,
     }));
   };
   const setFinalAmount = (v: string) => {
     setForm((f) => ({
       ...f,
       finalAmount: v,
-      finalDate: v.trim() && !f.finalDate ? localToday() : f.finalDate,
+      finalDate: v.trim() && !f.finalDate ? todayInKarachi() : f.finalDate,
     }));
   };
 
@@ -239,15 +232,14 @@ export default function BookingForm({
           />
         </FormField>
         {showFinalPayment && (
-          <FormField label="Status">
+          <FormField label="Cancelled?">
             <select
-              value={form.status}
-              onChange={(e) => setField("status", e.target.value as BookingStatus)}
+              value={form.status === "cancelled" ? "yes" : "no"}
+              onChange={(e) => setField("status", (e.target.value === "yes" ? "cancelled" : "upcoming") as BookingStatus)}
               className="input-base w-full"
             >
-              <option value="upcoming">Upcoming</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
             </select>
           </FormField>
         )}

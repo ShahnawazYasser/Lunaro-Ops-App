@@ -32,6 +32,8 @@ interface RecurringRow {
   due_day: number;
   venue_id: string | null;
   active: boolean;
+  starts_on: string | null;
+  ends_on: string | null;
   venues: { name: string } | null;
 }
 
@@ -41,6 +43,8 @@ interface FormState {
   amount: string;
   dueDay: string;
   venueId: string;
+  startsOn: string;
+  endsOn: string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -50,7 +54,7 @@ function pkr(n: number) {
 }
 
 function blankForm(): FormState {
-  return { name: "", category: "Rent", amount: "", dueDay: "1", venueId: "" };
+  return { name: "", category: "Rent", amount: "", dueDay: "1", venueId: "", startsOn: "", endsOn: "" };
 }
 
 function formFromRow(r: RecurringRow): FormState {
@@ -60,6 +64,8 @@ function formFromRow(r: RecurringRow): FormState {
     amount: String(r.amount),
     dueDay: String(r.due_day),
     venueId: r.venue_id ?? "",
+    startsOn: r.starts_on ?? "",
+    endsOn: r.ends_on ?? "",
   };
 }
 
@@ -70,6 +76,8 @@ function validate(f: FormState) {
     name: f.name.trim() === "" ? "Enter a name" : undefined,
     amount:
       f.amount.trim() === "" ? "Enter an amount" : amount <= 0 ? "Amount must be greater than 0" : undefined,
+    endsOn:
+      f.startsOn && f.endsOn && f.endsOn < f.startsOn ? "End date can't be before the start" : undefined,
     dueDay:
       f.dueDay.trim() === ""
         ? "Enter a day"
@@ -86,6 +94,8 @@ function toBody(f: FormState) {
     amount: Number(f.amount),
     dueDay: Number(f.dueDay),
     venueId: f.venueId || null,
+    startsOn: f.startsOn || null,
+    endsOn: f.endsOn || null,
   };
 }
 
@@ -149,10 +159,23 @@ function RecurringForm({
         )}
       </FormField>
 
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Starts on (optional)">
+          <input type="date" value={form.startsOn}
+            onChange={(e) => setForm((f) => ({ ...f, startsOn: e.target.value }))}
+            className="input-base w-full" />
+        </FormField>
+        <FormField label="Ends on (optional)" error={attempted ? errors.endsOn : undefined}>
+          <input type="date" value={form.endsOn}
+            onChange={(e) => setForm((f) => ({ ...f, endsOn: e.target.value }))}
+            className="input-base w-full" />
+        </FormField>
+      </div>
+
       <Button size="lg" className="w-full" disabled={submitting}
         onClick={() => {
           setAttempted(true);
-          if (errors.name || errors.amount || errors.dueDay) return;
+          if (errors.name || errors.amount || errors.dueDay || errors.endsOn) return;
           onSubmit(form);
         }}>
         {submitting ? submittingLabel : submitLabel}
@@ -219,7 +242,7 @@ export default function RecurringClient({ user, venues }: Props) {
         body: JSON.stringify(toBody(form)),
       });
       if (res.ok) {
-        showToast("success", "Recurring cost added!");
+        showToast("success", "Fixed cost added!");
         setAddKey((k) => k + 1);
         reload();
       } else {
@@ -301,12 +324,12 @@ export default function RecurringClient({ user, venues }: Props) {
 
   return (
     <div className="min-h-screen pb-24 bg-bg text-text">
-      <PageHeader title="Recurring Costs" />
+      <PageHeader title="Fixed Costs" />
       <Toast toast={toast} />
 
       {confirmDeleteId && (
         <ConfirmDialog
-          title="Delete this recurring cost?"
+          title="Delete this fixed cost?"
           message="This can't be undone. Past expenses you've already logged aren't affected."
           busy={busyId === confirmDeleteId}
           onConfirm={() => { void handleDelete(confirmDeleteId); }}
@@ -315,7 +338,7 @@ export default function RecurringClient({ user, venues }: Props) {
       )}
 
       {editing && (
-        <Sheet title="Edit recurring cost" subtitle={editing.name} onClose={() => setEditing(null)}>
+        <Sheet title="Edit fixed cost" subtitle={editing.name} onClose={() => setEditing(null)}>
           <Card>
             <RecurringForm
               key={editing.id}
@@ -332,14 +355,15 @@ export default function RecurringClient({ user, venues }: Props) {
 
       <main className="max-w-lg mx-auto px-4 py-5 space-y-5">
         <p className="text-xs text-text-muted">
-          Costs that come back every month, like rent. A rent linked to a venue powers the
-          &ldquo;rent not covered&rdquo; warning on the dashboard. This list doesn&apos;t log expenses
-          by itself — log them on the Expenses screen as usual.
+          Costs that come back every month, like rent. Nothing is counted automatically: on the
+          Dashboard, press &ldquo;Count them&rdquo; each month to add these to your expenses.
+          Venues that pay you by payout (like Lanes) are never counted this way — their rent comes
+          out of the payout.
         </p>
 
         {/* ── Add ───────────────────────────────────────────── */}
         <section>
-          <SectionLabel>Add Recurring Cost</SectionLabel>
+          <SectionLabel>Add Fixed Cost</SectionLabel>
           <Card>
             <RecurringForm
               key={addKey}
@@ -356,7 +380,7 @@ export default function RecurringClient({ user, venues }: Props) {
         {/* ── List ──────────────────────────────────────────── */}
         <section className="space-y-2">
           <div className="flex items-center justify-between mb-1">
-            <SectionLabel className="">All Recurring Costs</SectionLabel>
+            <SectionLabel className="">All Fixed Costs</SectionLabel>
             {rows.length > 0 && (
               <span className="text-xs text-text-muted">{pkr(activeTotal)}/mo active</span>
             )}
@@ -367,7 +391,7 @@ export default function RecurringClient({ user, venues }: Props) {
           ) : listError ? (
             <EmptyState error message={listError} onRetry={reload} />
           ) : rows.length === 0 ? (
-            <EmptyState message="No recurring costs yet" />
+            <EmptyState message="No fixed costs yet" />
           ) : (
             rows.map((r) => (
               <Card key={r.id} size="sm" className={r.active ? "" : "opacity-60"}>
@@ -379,7 +403,9 @@ export default function RecurringClient({ user, venues }: Props) {
                     </div>
                     <p className="text-xs mt-1 text-text-muted">
                       {r.category}
-                      {r.venues ? ` · ${r.venues.name}` : ""} · around day {r.due_day}
+                      {r.venues ? ` · ${r.venues.name}` : ""}
+                      {r.starts_on ? ` · from ${r.starts_on}` : ""}
+                      {r.ends_on ? ` · until ${r.ends_on}` : ""}
                     </p>
                     <p className="text-sm mt-1 text-gold">{pkr(r.amount)}/mo</p>
                   </div>

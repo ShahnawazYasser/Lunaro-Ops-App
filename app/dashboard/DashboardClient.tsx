@@ -5,6 +5,7 @@ import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import { cx } from "@/components/cx";
 import { defer } from "@/lib/defer";
+import { currentMonthInKarachi, formatDate, formatMonthLabel, shiftMonth } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,10 +22,22 @@ interface CategoryExpense {
   amount: number;
 }
 
+interface AttendanceDay {
+  date: string;
+  status: "present" | "absent" | "future";
+}
+
 interface AttendanceSummaryRow {
   id: string;
   name: string;
   daysPresent: number;
+  days: AttendanceDay[];
+}
+
+interface OwedByEmployee {
+  userId: string;
+  name: string;
+  amount: number;
 }
 
 interface RentCoverageItem {
@@ -40,13 +53,11 @@ interface DailyRevenue {
 
 interface DashboardResponse {
   totalRevenue: number;
-  operationalExpenses: number;
-  reimbursements: number;
   totalExpenses: number;
   owedToEmployees: number;
+  owedByEmployee: OwedByEmployee[];
   netProfit: number;
   freePrintsCount: number;
-  freePrintsCost: number;
   wastePrints: number;
   bookingRevenue: number;
   bookingPaymentsCount: number;
@@ -59,65 +70,19 @@ interface DashboardResponse {
   attendance: AttendanceSummaryRow[];
   daysInMonth: number;
   rentCoverage: RentCoverageItem[];
+  unpostedFixedCosts: { name: string; venueName: string | null; amount: number }[];
   dailyRevenue: DailyRevenue[];
   ownerDraws: number;
 }
 
-// Per-day attendance comes from the existing /api/attendance route (same
-// derivation as the Attendance screen) — the dashboard API only has counts.
-interface AttendanceDay {
-  date: string;
-  status: "present" | "absent" | "future";
-}
-interface EmployeeAttendance {
-  id: string;
-  name: string;
-  days: AttendanceDay[];
-}
-
-interface MonthData {
-  dashboard: DashboardResponse;
-  attendance: EmployeeAttendance[] | null;
-}
-
 // Month results kept for the session so switching back to a month shows it
 // instantly (then quietly refreshes) instead of flashing an empty hero.
-const monthCache = new Map<string, MonthData>();
+const monthCache = new Map<string, DashboardResponse>();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function prevMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function nextMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonthLabel(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long", year: "numeric",
-  });
-}
-
 function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
-    day: "numeric", month: "short", year: "numeric",
-  });
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -256,7 +221,7 @@ function SalesChart({ daily, total }: { daily: DailyRevenue[]; total: number }) 
   );
 }
 
-function AttendanceCard({ rows, perDay }: { rows: AttendanceSummaryRow[]; perDay: EmployeeAttendance[] | null }) {
+function AttendanceCard({ rows }: { rows: AttendanceSummaryRow[] }) {
   return (
     <Glass className="p-5 lg:p-6">
       <h2 className="mb-4 text-base font-semibold leading-[22px]">Attendance</h2>
@@ -265,7 +230,7 @@ function AttendanceCard({ rows, perDay }: { rows: AttendanceSummaryRow[]; perDay
       ) : (
         <div className="space-y-5">
           {rows.map((emp) => {
-            const days = (perDay?.find((p) => p.id === emp.id)?.days ?? []).filter((d) => d.status !== "future");
+            const days = emp.days.filter((d) => d.status !== "future");
             return (
               <div key={emp.id}>
                 <div className="mb-2 flex items-baseline justify-between">
@@ -318,31 +283,24 @@ function DashboardSkeleton() {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function DashboardClient() {
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(currentMonthInKarachi);
   const [, setVersion] = useState(0); // bumps when the cache is refreshed
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [counting, setCounting] = useState(false);
 
   const fetchMonth = useCallback(async (m: string) => {
     setLoading(true);
     setError(null);
     try {
-      const [dashRes, attRes] = await Promise.all([
-        fetch(`/api/dashboard?month=${m}`),
-        fetch(`/api/attendance?month=${m}`),
-      ]);
+      const dashRes = await fetch(`/api/dashboard?month=${m}`);
       if (!dashRes.ok) {
         const e = (await dashRes.json()) as { error?: string };
         setError(e.error ?? "Failed to load dashboard");
         return;
       }
       const dashboard = (await dashRes.json()) as DashboardResponse;
-      let attendance: EmployeeAttendance[] | null = null;
-      if (attRes.ok) {
-        const a = (await attRes.json()) as { employees?: EmployeeAttendance[] } | EmployeeAttendance[];
-        attendance = Array.isArray(a) ? a : (a.employees ?? null);
-      }
-      monthCache.set(m, { dashboard, attendance });
+      monthCache.set(m, dashboard);
       setVersion((v) => v + 1);
     } catch {
       setError("Could not reach server");
@@ -353,8 +311,31 @@ export default function DashboardClient() {
 
   useEffect(() => defer(() => { void fetchMonth(month); }), [month, fetchMonth]);
 
-  const cached = monthCache.get(month);
-  const data = cached?.dashboard ?? null;
+  // "Count them": posts this month's fixed costs as expenses (the route skips
+  // anything already posted, so pressing twice is safe), then refreshes.
+  const countFixedCosts = async () => {
+    setCounting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/recurring/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      if (!res.ok) {
+        const e = (await res.json()) as { error?: string };
+        setError(e.error ?? "Couldn't count the fixed costs");
+        return;
+      }
+      await fetchMonth(month);
+    } catch {
+      setError("Could not reach server");
+    } finally {
+      setCounting(false);
+    }
+  };
+
+  const data = monthCache.get(month) ?? null;
 
   const hasActivity =
     !!data &&
@@ -411,7 +392,7 @@ export default function DashboardClient() {
             <LMark className="h-8 w-8 rounded-[10px] text-base lg:hidden" />
             <h1 className="font-display text-[26px] font-semibold leading-[34px] tracking-[-0.01em] lg:text-[28px]">Dashboard</h1>
           </div>
-          <MonthPill label={formatMonthLabel(month)} onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+          <MonthPill label={formatMonthLabel(month)} onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
         </header>
 
         {error && (
@@ -430,6 +411,28 @@ export default function DashboardClient() {
 
         {data && (
           <div className={cx("space-y-3 transition-opacity duration-150 lg:space-y-4", loading && "opacity-90")}>
+            {/* Fixed costs not yet counted */}
+            {data.unpostedFixedCosts.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-gold/40 bg-gold/[0.12] p-4 lg:p-5">
+                <p className="min-w-0 flex-1 text-sm">
+                  <span className="font-semibold">
+                    {data.unpostedFixedCosts.length} fixed cost{data.unpostedFixedCosts.length === 1 ? "" : "s"} not yet counted this month:
+                  </span>{" "}
+                  <span className="text-text-muted">
+                    {data.unpostedFixedCosts.map((c) => `${c.name} ${pkr(c.amount)}`).join(", ")}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  disabled={counting}
+                  onClick={() => { void countFixedCosts(); }}
+                  className="shrink-0 rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-bg disabled:opacity-60"
+                >
+                  {counting ? "Counting…" : "Count them"}
+                </button>
+              </div>
+            )}
+
             {/* Rent-coverage alert */}
             {data.rentCoverage.map((item) => (
               <div
@@ -522,10 +525,15 @@ export default function DashboardClient() {
                       <p className="mt-2 font-display text-[18px] font-bold leading-[26px] tracking-[-0.01em] lg:mt-3 lg:text-[30px] lg:leading-[34px] lg:tracking-[-0.015em]">
                         {pkr(data.owedToEmployees)}
                       </p>
-                      {data.ownerDraws > 0 && (
-                        <p className="mt-2 text-xs text-text-muted">
-                          Owner draws {pkr(data.ownerDraws)} · not in profit
-                        </p>
+                      {data.owedByEmployee.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {data.owedByEmployee.map((o) => (
+                            <li key={o.userId} className="flex justify-between gap-3 text-xs text-text-muted">
+                              <span className="truncate">{o.name}</span>
+                              <span className="shrink-0">{pkr(o.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </Glass>
                     <Glass className="p-5">
@@ -554,7 +562,7 @@ export default function DashboardClient() {
                 <div className="grid gap-3 lg:grid-cols-[716fr_380fr] lg:gap-4">
                   <SalesChart daily={data.dailyRevenue} total={boothSales} />
                   <div className="hidden lg:block">
-                    <AttendanceCard rows={data.attendance} perDay={cached?.attendance ?? null} />
+                    <AttendanceCard rows={data.attendance} />
                   </div>
                 </div>
 
@@ -566,11 +574,20 @@ export default function DashboardClient() {
                     fill="gold"
                     footnote="Cash basis. Payouts count in the month received, not when the cycle ends."
                   />
-                  <BarList title="Expenses by category" rows={expenseRows} fill="raised" />
+                  <BarList
+                    title="Expenses by category"
+                    rows={expenseRows}
+                    fill="raised"
+                    footnote={
+                      data.ownerDraws > 0
+                        ? `Owner draws ${pkr(data.ownerDraws)} (not counted as an expense)`
+                        : undefined
+                    }
+                  />
                 </div>
 
                 <div className="lg:hidden">
-                  <AttendanceCard rows={data.attendance} perDay={cached?.attendance ?? null} />
+                  <AttendanceCard rows={data.attendance} />
                 </div>
               </>
             )}

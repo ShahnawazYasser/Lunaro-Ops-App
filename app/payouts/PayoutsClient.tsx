@@ -12,6 +12,7 @@ import SectionLabel from "@/components/SectionLabel";
 import Sheet from "@/components/Sheet";
 import Toast, { type ToastState } from "@/components/Toast";
 import { defer } from "@/lib/defer";
+import { formatDate, todayInKarachi } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,19 +56,8 @@ interface EditForm {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
-    day: "numeric", month: "short", year: "numeric",
-  });
 }
 
 function blankNewCycleForm(venues: Venue[]): NewCycleForm {
@@ -106,7 +96,7 @@ export default function PayoutsClient({ user, venues }: Props) {
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const today = localToday();
+  const today = todayInKarachi();
 
   const showToast = useCallback((type: ToastState["type"], message: string) => {
     setToast({ type, message });

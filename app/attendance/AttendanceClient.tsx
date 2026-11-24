@@ -10,6 +10,7 @@ import MonthSwitcher from "@/components/MonthSwitcher";
 import Spinner from "@/components/Spinner";
 import { cx } from "@/components/cx";
 import { defer } from "@/lib/defer";
+import { currentMonthInKarachi, formatMonthLabel, shiftMonth } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -32,30 +33,6 @@ interface AttendanceResponse {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function prevMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function nextMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonthLabel(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long", year: "numeric",
-  });
-}
-
 function dayLabel(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return String(d.getDate());
@@ -69,7 +46,7 @@ function dayOfWeek(dateStr: string): string {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function AttendanceClient() {
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(currentMonthInKarachi);
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null); // "userId-date"
@@ -168,7 +145,7 @@ export default function AttendanceClient() {
     <div className="min-h-screen pb-24 bg-bg text-text">
       <PageHeader title="Attendance">
         <MonthSwitcher label={formatMonthLabel(month)}
-          onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+          onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
       </PageHeader>
 
       {error && <ErrorBanner message={error} onRetry={() => { void fetchAttendance(month); }} />}

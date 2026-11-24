@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requireSession, fail, dbError } from "@/lib/api";
-import { parseEntryBody } from "@/lib/entry-input";
+import { entryRecord, parseEntryBody } from "@/lib/entry-input";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 import { addDays, monthRange, todayInKarachi } from "@/lib/dates";
 import { isMonth } from "@/lib/validate";
@@ -60,23 +60,7 @@ export async function POST(request: NextRequest) {
 
   const parsed = parseEntryBody(raw);
   if (!parsed.ok) return fail(400, parsed.error);
-  const {
-    entryDate,
-    clockIn,
-    clockOut,
-    venueId,
-    eventName,
-    totalPrints,
-    extraPrints,
-    systemPrints500,
-    systemPrints250,
-    freePrints,
-    wastePrints,
-    priceCharged,
-    cashReceived,
-    bankReceived,
-    expenses,
-  } = parsed.value;
+  const { entryDate, venueId, expenses } = parsed.value;
 
   // Date window (Asia/Karachi). Employees: today or up to 2 days back.
   // Owner: any past date. Nobody: the future.
@@ -117,60 +101,19 @@ export async function POST(request: NextRequest) {
     return fail(409, "This entry has been finalized by the owner. Contact them to make changes.");
   }
 
-  const entryFields = {
-    user_id: userId,
-    entry_date: entryDate,
-    venue_id: venueId,
-    event_name: venueId === "event" ? eventName : null,
-    clock_in: clockIn,
-    clock_out: clockOut,
-    total_prints: totalPrints,
-    extra_prints: extraPrints,
-    system_prints_500: systemPrints500,
-    system_prints_250: systemPrints250,
-    free_prints: freePrints,
-    waste_prints: wastePrints,
-    price_charged: priceCharged,
-    cash_received: cashReceived,
-    bank_received: bankReceived,
-    notes: null,
-  };
-
-  // Writes to shift_entries go through the actor-tagged client so the audit
-  // trigger records who made the change.
-  const db = supabaseAsActor(userId);
-
-  let entryId: string;
+  // One transaction: the shift row AND its expenses are saved together or not
+  // at all (save_shift_entry, migration_save_shift_entry.sql). Called through
+  // the actor-tagged client so the audit trigger records who made the change.
   const isUpdate = existing !== null;
-
-  if (isUpdate) {
-    const { error: updateError } = await db
-      .from("shift_entries")
-      .update(entryFields)
-      .eq("id", existing.id);
-
-    if (updateError) return dbError(updateError);
-    entryId = existing.id;
-  } else {
-    const { data: inserted, error: insertError } = await db
-      .from("shift_entries")
-      .insert(entryFields)
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      return insertError ? dbError(insertError) : fail(500, "Something went wrong. Try again.", "entry insert returned no row");
-    }
-    entryId = inserted.id;
-  }
-
-  // Replace expenses atomically (delete + insert in one DB transaction)
-  const { error: replaceError } = await supabaseAdmin.rpc("replace_entry_expenses", {
-    p_shift_entry_id: entryId,
+  const { data: entryId, error: saveError } = await supabaseAsActor(userId).rpc("save_shift_entry", {
+    p_entry: { ...entryRecord(parsed.value), user_id: userId, entry_date: entryDate },
     p_expenses: expenses,
+    p_entry_id: existing?.id ?? null,
   });
 
-  if (replaceError) return dbError(replaceError);
+  if (saveError || !entryId) {
+    return saveError ? dbError(saveError) : fail(500, "Something went wrong. Try again.", "save_shift_entry returned no id");
+  }
 
   return NextResponse.json({ ok: true, entryId, updated: isUpdate }, { status: isUpdate ? 200 : 201 });
 }

@@ -71,10 +71,11 @@ export async function PUT(
     return NextResponse.json({ error: "Advance date isn't a valid date" }, { status: 400 });
   }
 
-  const status = body.status ?? "upcoming";
-  if (!VALID_STATUSES.includes(status)) {
+  if (body.status !== undefined && !VALID_STATUSES.includes(body.status)) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
+  // Only 'cancelled' is meaningful; the display status is derived on read.
+  const status: BookingStatus = body.status === "cancelled" ? "cancelled" : "upcoming";
 
   // Each payment is a complete amount+date pair, or absent entirely.
   const hasAdvanceAmount = body.advanceAmount != null;
