@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, requireSession, fail, dbError } from "@/lib/api";
-import { entryRecord, parseEntryBody } from "@/lib/entry-input";
+import { EDIT_WINDOW_DAYS, entryRecord, parseEntryBody } from "@/lib/entry-input";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
-import { addDays, monthRange, todayInKarachi } from "@/lib/dates";
-import { isMonth } from "@/lib/validate";
+import { addDays, formatDate, monthRange, todayInKarachi } from "@/lib/dates";
+import { isMonth, isUuid } from "@/lib/validate";
 
 export const preferredRegion = "sin1";
 
@@ -44,7 +44,22 @@ export async function GET(request: NextRequest) {
 
   if (error) return dbError(error);
 
-  return NextResponse.json({ entries: data ?? [] });
+  // How many changes each entry has in its history (the insert counts as 1), so
+  // the list can flag entries changed after they were first saved.
+  const entries = data ?? [];
+  const auditCounts = new Map<string, number>();
+  if (entries.length > 0) {
+    const { data: auditRows, error: auditError } = await supabaseAdmin
+      .from("entry_audit")
+      .select("entry_id")
+      .in("entry_id", entries.map((e) => e.id));
+    if (auditError) return dbError(auditError);
+    for (const r of auditRows ?? []) auditCounts.set(r.entry_id, (auditCounts.get(r.entry_id) ?? 0) + 1);
+  }
+
+  return NextResponse.json({
+    entries: entries.map((e) => ({ ...e, audit_count: auditCounts.get(e.id) ?? 0 })),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -62,53 +77,76 @@ export async function POST(request: NextRequest) {
   if (!parsed.ok) return fail(400, parsed.error);
   const { entryDate, venueId, expenses } = parsed.value;
 
-  // Date window (Asia/Karachi). Employees: today or up to 2 days back.
-  // Owner: any past date. Nobody: the future.
+  const userId = session.userId;
   const today = todayInKarachi();
-  if (entryDate > today) return fail(400, "The date can't be in the future.");
-  if (session.role !== "owner" && entryDate < addDays(today, -2)) {
-    return fail(400, "You can only log today or the last 2 days. Ask the owner to add older entries.");
-  }
+
+  // `entryId` present = a deliberate edit of one of the caller's own entries
+  // (My entries). Absent = a new entry; it may NOT silently overwrite one.
+  const rawEntryId = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["entryId"] : undefined;
+  if (rawEntryId !== undefined && rawEntryId !== null && !isUuid(rawEntryId)) return fail(400, "Invalid entry.");
+  const entryIdFromClient = typeof rawEntryId === "string" ? rawEntryId : null;
 
   const { data: venue, error: venueError } = await supabaseAdmin
     .from("venues")
-    .select("id")
+    .select("id, name")
     .eq("id", venueId)
     .maybeSingle();
   if (venueError) return dbError(venueError);
   if (!venue) return fail(400, "That venue doesn't exist. Pick one from the list.");
 
-  const userId = session.userId;
+  // The lock: once the owner has touched a row — marked the cash collected, or
+  // edited it via PUT /api/entries/[id] — the employee can never change it
+  // again. Owner edits go through PUT, which bypasses this.
+  const LOCKED = "This entry has been finalized by the owner. Contact them to make changes.";
 
-  // Check for existing entry for this user+date+venue (the uniqueness key
-  // since migration_entry_audit.sql — one person may log two venues in a day).
-  //
-  // The lock: once the owner has touched a row — either by marking the cash
-  // collected, or by editing it via PUT /api/entries/[id] — employee
-  // resubmission for that user+date is permanently rejected. Without it, an
-  // upsert on (user_id, entry_date) would silently overwrite the owner's
-  // reconciled figures. Owner edits go through PUT, which bypasses this.
-  const { data: existing, error: existingError } = await supabaseAdmin
-    .from("shift_entries")
-    .select("id, cash_collected, last_edited_by")
-    .eq("user_id", userId)
-    .eq("entry_date", entryDate)
-    .eq("venue_id", venueId)
-    .maybeSingle();
-  if (existingError) return dbError(existingError);
+  let existingId: string | null = null;
 
-  if (existing?.cash_collected || existing?.last_edited_by) {
-    return fail(409, "This entry has been finalized by the owner. Contact them to make changes.");
+  if (entryIdFromClient) {
+    // ── Editing: the row must be the caller's own, unlocked, and recent ──
+    const { data: own, error: ownError } = await supabaseAdmin
+      .from("shift_entries")
+      .select("id, user_id, entry_date, cash_collected, last_edited_by")
+      .eq("id", entryIdFromClient)
+      .maybeSingle();
+    if (ownError) return dbError(ownError);
+    if (!own || own.user_id !== userId) return fail(404, "Entry not found");
+    if (own.cash_collected || own.last_edited_by) return fail(409, LOCKED);
+    if (entryDate !== own.entry_date) return fail(400, "The date of an entry can't be changed.");
+    if (own.entry_date < addDays(today, -EDIT_WINDOW_DAYS)) {
+      return fail(409, `Entries older than ${EDIT_WINDOW_DAYS} days can't be changed. Ask the owner.`);
+    }
+    existingId = own.id;
+  } else {
+    // ── New entry: date window (Asia/Karachi). Employees: today or up to
+    // 2 days back. Owner: any past date. Nobody: the future. ──
+    if (entryDate > today) return fail(400, "The date can't be in the future.");
+    if (session.role !== "owner" && entryDate < addDays(today, -2)) {
+      return fail(400, "You can only log today or the last 2 days. Ask the owner to add older entries.");
+    }
+
+    // One row per user + date + venue (migration_entry_audit.sql). A second
+    // submission for the same one is refused, never merged into the first.
+    const { data: dup, error: dupError } = await supabaseAdmin
+      .from("shift_entries")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("entry_date", entryDate)
+      .eq("venue_id", venueId)
+      .maybeSingle();
+    if (dupError) return dbError(dupError);
+    if (dup) {
+      return fail(409, `You already logged ${venue.name} for ${formatDate(entryDate)}. Open it in My entries to change it.`);
+    }
   }
 
   // One transaction: the shift row AND its expenses are saved together or not
   // at all (save_shift_entry, migration_save_shift_entry.sql). Called through
   // the actor-tagged client so the audit trigger records who made the change.
-  const isUpdate = existing !== null;
+  const isUpdate = existingId !== null;
   const { data: entryId, error: saveError } = await supabaseAsActor(userId).rpc("save_shift_entry", {
     p_entry: { ...entryRecord(parsed.value), user_id: userId, entry_date: entryDate },
     p_expenses: expenses,
-    p_entry_id: existing?.id ?? null,
+    p_entry_id: existingId,
   });
 
   if (saveError || !entryId) {

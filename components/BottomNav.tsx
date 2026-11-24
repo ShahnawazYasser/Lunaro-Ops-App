@@ -124,6 +124,7 @@ const IconLogout = () => (
 
 const EMPLOYEE_NAV: NavItem[] = [
   { href: "/entry", label: "Daily Entry", icon: <IconDailyEntry /> },
+  { href: "/my-entries", label: "My entries", icon: <IconEntries /> },
   { href: "/reimburse", label: "My Expenses", icon: <IconExpenses /> },
 ];
 
@@ -146,6 +147,7 @@ const CHANGE_PIN: NavItem = { href: "/set-pin", label: "Change PIN", icon: <Icon
 const OWNER_SECONDARY: NavItem[] = [
   { href: "/attendance", label: "Attendance", icon: <IconAttendance /> },
   { href: "/entry", label: "Daily entry", icon: <IconDailyEntry /> },
+  { href: "/my-entries", label: "My entries", icon: <IconEntries /> },
 ];
 
 // First three owner items sit in the mobile bar; everything else goes in "More".

@@ -50,6 +50,7 @@ interface EntryRow {
   cash_collected_at: string | null;
   last_edited_by: string | null;
   last_edited_at: string | null;
+  audit_count: number;
   users: { name: string };
   venues: { name: string };
   entry_expenses: { description: string; amount: number; category: string }[];
@@ -99,6 +100,98 @@ function rowToFormValues(row: EntryRow): ShiftEntryFormValues {
         }))
       : [{ description: "", amount: "", category: "Operational" }],
   };
+}
+
+// ── Change history (Chunk 11b) ─────────────────────────────────────────────
+
+interface AuditItem {
+  id: number;
+  action: "insert" | "update" | "delete";
+  changed: Record<string, { from: unknown; to: unknown }>;
+  was_collected: boolean;
+  created_at: string;
+  actor: { name: string } | null;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  venue_id: "Venue",
+  event_name: "Event name",
+  entry_date: "Date",
+  clock_in: "Clock in",
+  clock_out: "Clock out",
+  total_prints: "Total prints",
+  extra_prints: "Extra prints",
+  system_prints_500: "System prints @500",
+  system_prints_250: "System prints @250",
+  free_prints: "Free prints",
+  waste_prints: "Wasted prints",
+  price_charged: "Price offered",
+  cash_received: "Cash received",
+  bank_received: "Bank received",
+  notes: "Notes",
+  cash_collected: "Cash collected",
+};
+
+function showValue(field: string, v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "number") return v.toLocaleString("en-PK");
+  if (typeof v === "string") return field.startsWith("clock_") ? v.slice(0, 5) : v;
+  return "—";
+}
+
+function ChangeHistory({ entryId }: { entryId: string }) {
+  const [items, setItems] = useState<AuditItem[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/entries/${entryId}/audit`);
+        if (cancelled) return;
+        if (res.ok) setItems(((await res.json()) as { history: AuditItem[] }).history);
+        else setFailed(true);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entryId]);
+
+  return (
+    <DetailSection title="Changes">
+      {failed ? (
+        <p className="text-xs text-danger">Couldn&apos;t load the history.</p>
+      ) : items === null ? (
+        <p className="text-xs text-text-muted">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-text-muted">No history recorded.</p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((it) => (
+            <div key={it.id} className="text-xs space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium text-text">{it.actor?.name ?? "Outside the app"}</span>
+                <span className="text-text-muted">· {formatEditedAt(it.created_at)}</span>
+                {it.was_collected && <Badge tone="danger" shape="tag">Changed after collection</Badge>}
+              </div>
+              {it.action === "insert" ? (
+                <p className="text-text-muted">Entry created</p>
+              ) : (
+                Object.entries(it.changed).map(([field, c]) => (
+                  <p key={field} className="text-text-muted">
+                    {FIELD_LABELS[field] ?? field}{" "}
+                    <span className="text-text">{showValue(field, c.from)} → {showValue(field, c.to)}</span>
+                  </p>
+                ))
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </DetailSection>
+  );
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -345,7 +438,7 @@ export default function EntriesClient({ venues }: Props) {
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1">
                           {row.cash_collected && <Badge shape="tag">Collected</Badge>}
-                          {row.last_edited_by && <Badge shape="tag" tone="outline">Edited</Badge>}
+                          {(row.last_edited_by || row.audit_count > 1) && <Badge shape="tag" tone="outline">Edited</Badge>}
                         </div>
                       </div>
                     </div>
@@ -419,6 +512,8 @@ export default function EntriesClient({ venues }: Props) {
                         Edited by the owner on {formatEditedAt(row.last_edited_at)}
                       </p>
                     )}
+
+                    <ChangeHistory entryId={row.id} />
 
                     <Button size="lg" className="w-full" onClick={() => setEditing(row)}>
                       Edit
