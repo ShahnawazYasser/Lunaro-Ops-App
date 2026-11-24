@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getVerifiedSession } from "@/lib/auth";
 import BookingsClient from "./BookingsClient";
 
 export default async function BookingsPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
   if (session.role !== "owner") redirect("/entry");
 

@@ -3,8 +3,7 @@
 import { useState, useCallback } from "react";
 import { cx } from "@/components/cx";
 
-const NAMES = ["Ahsan", "Farhan", "Owner"] as const;
-type UserName = (typeof NAMES)[number];
+type UserName = string;
 
 // Shared look of every PIN-pad key
 const KEY_CLS =
@@ -15,7 +14,7 @@ const MAX_PIN = 8;
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
 
-export default function LoginClient() {
+export default function LoginClient({ names }: { names: string[] }) {
   const [selectedName, setSelectedName] = useState<UserName | null>(null);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +105,7 @@ export default function LoginClient() {
               Who are you?
             </p>
             <div className="space-y-3">
-              {NAMES.map((name) => (
+              {names.map((name) => (
                 <button
                   key={name}
                   onClick={() => handleNameSelect(name)}

@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
-import { getSession, type SessionUser } from "@/lib/session";
+import type { SessionUser } from "@/lib/session";
+import { getVerifiedSession } from "@/lib/auth";
 
 // Shared guards and error helpers for API routes.
 //
 //   const session = await requireOwner();
 //   if (session instanceof NextResponse) return session;
 
-export async function requireSession(): Promise<SessionUser | NextResponse> {
-  const session = await getSession();
+// `allowMustSetPin` is only for POST /api/auth/set-pin: a person who still has
+// a temporary PIN may do nothing else until they choose their own.
+export async function requireSession(
+  opts: { allowMustSetPin?: boolean } = {}
+): Promise<SessionUser | NextResponse> {
+  const session = await getVerifiedSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.mustSetPin && !opts.allowMustSetPin) {
+    return NextResponse.json({ error: "Choose your own PIN first." }, { status: 403 });
+  }
   return session;
 }
 

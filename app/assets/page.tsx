@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getVerifiedSession } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import AssetsClient from "./AssetsClient";
 
 export default async function AssetsPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
   if (session.role !== "owner") redirect("/entry");
 

@@ -11,8 +11,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Authenticated — redirect away from /login and root, landing page by role
-  if (pathname === "/login" || pathname === "/") {
+  // Still on a temporary PIN: nothing but the set-PIN screen until they choose one.
+  // (API routes enforce the same rule server-side; this only steers pages.)
+  if (session.mustSetPin) {
+    if (pathname === "/set-pin") return NextResponse.next();
+    return NextResponse.redirect(new URL("/set-pin", request.url));
+  }
+
+  // Authenticated — redirect away from root, landing page by role. /login is
+  // decided by the login page itself, which checks the database (a stale
+  // cookie there must not loop back into the app).
+  if (pathname === "/") {
     const landingPath = session.role === "owner" ? "/dashboard" : "/entry";
     return NextResponse.redirect(new URL(landingPath, request.url));
   }
