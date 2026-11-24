@@ -243,7 +243,7 @@ phase asks, report back clearly, and wait for the next prompt.
 
 _(Update this section at the end of every phase before ending the session.)_
 
-**Last updated:** 2026-11-12 (Chunk 10: owner draws, recurring costs, lint clean). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
+**Last updated:** 2026-11-25 (Chunk 13: 13a dashboard maths, 13b fixed costs + venue flags, 13c entry save/delete/time — all three migrations applied; branch `chunk-13c-entry-save`, NOT yet merged/deployed). Live — 2026-07-01: Phase 5 (deploy + harden) and all 3
 PWA parts (manifest/icons, service worker, final verification) are done
 and confirmed working, including all 4 real-device checks (browser
 regression, phone install, installed-app data freshness, console check).
@@ -1336,7 +1336,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Data caveat: a stray `payout_cycles` row tagged `event` makes `event` look like a payout venue and raises bogus
   rent alerts for the recurring costs tagged `event`; delete it (see the Chunk 13 cleanup SQL).
 
-**Chunk 13b — Fixed costs that post themselves, venue flags** (`migration_recurring_and_venue_flags.sql` — written, NOT applied until the owner says so)
+**Chunk 13b — Fixed costs that post themselves, venue flags** (`migration_recurring_and_venue_flags.sql` — applied as `recurring_and_venue_flags`)
 - Migration adds `venues.active / collects_payments / default_price` (Lanes = collects_payments), `expenses.recurring_id` +
   `recurring_month` with a unique index (one posting per fixed cost per month), and `recurring_expenses.starts_on / ends_on`.
 - `/recurring` is now the "Fixed costs" screen (nav label renamed; route unchanged): start/end dates added. `lib/fixed-costs.ts`
@@ -1348,7 +1348,25 @@ as prior phases). `bookings` confirmed empty and both test months'
 - `/entry` venue list = `active` and not `collects_payments`. Owner screens still list every venue (not changed).
 - Booking status is derived on read (cancelled / past → completed / else upcoming); the form's only choice is "Cancelled? Yes/No".
 
+**Chunk 13c — One clock, atomic entry save, notes, delete** (`migration_save_shift_entry.sql` — applied as `save_shift_entry`; the migrations are live, so deploy this code soon — production's old code still works because they are additive)
+- **One clock:** `lib/dates.ts` gains `currentMonthInKarachi`, `shiftMonth`, `formatMonthLabel`, `formatDate(date, {year})`, `hoursWorked`. Every
+  per-screen copy of localToday/currentMonth/prevMonth/nextMonth/formatMonth(Label)/formatDate was deleted; clients use `todayInKarachi()`. **Never
+  read the device clock for "today" or "this month".** (Asset age on `/assets` still uses the device clock for a months-since-purchase figure.)
+- **Overnight shifts:** `hoursWorked` adds 24h when clock-out < clock-in; over 16h (or equal times) returns "" and the form says "Check the times"
+  (also enforced in `parseEntryBody`).
+- **Atomic save:** `public.save_shift_entry(p_entry, p_expenses, p_entry_id)` does the shift row + `replace_entry_expenses` in one transaction.
+  POST `/api/entries` and PUT `/api/entries/[id]` call it through `supabaseAsActor(userId)` (the `x-actor-id` header feeds the audit trigger; the
+  function never sets `app.actor_id`). The lock rule (cash_collected / last_edited_by) is still checked in the POST route.
+- **Notes:** optional textarea (max 300) on `ShiftEntryForm`, carried through `parseEntryBody`/`entryRecord`, both routes and the RPC (a save no longer wipes it).
+- **Delete:** `DELETE /api/entries/[id]` (owner-only, via `supabaseAsActor` so `entry_audit` gets a `delete` row; expenses cascade). "Delete entry" button
+  inside the owner edit sheet, behind a ConfirmDialog.
+
 ### In progress
+- **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
+  its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
+  the `solos` shift entry + venue), a browser/phone click-through (month switcher = one request, "Count them" for November, `/entry` hides Lanes,
+  overnight shift, notes, delete entry), and write-verification of `save_shift_entry` + the audit actor on insert/update/delete.
+  Chunk 11 (Amnah user, self-set PINs, revocable sessions) is the next prompt and runs after 13.
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.
 - Chunk 10 is **live** (merged to `master` as `ed37e69`, 2026-11-12; Vercel deployed it on push). Read-only smoke test

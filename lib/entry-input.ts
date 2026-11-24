@@ -1,4 +1,5 @@
 import { resolveShiftCategory } from "@/lib/categories";
+import { hoursWorked } from "@/lib/dates";
 import { int, isIsoDate, isTime, money, str } from "@/lib/validate";
 
 // Shared body validation for POST /api/entries and PUT /api/entries/[id].
@@ -26,6 +27,7 @@ export interface ParsedEntry {
   priceCharged: number | null;
   cashReceived: number;
   bankReceived: number;
+  notes: string | null;
   expenses: ParsedExpense[];
   // Only meaningful for PUT, where it is checked against the stored row.
   userId: string | undefined;
@@ -52,6 +54,10 @@ export function parseEntryBody(raw: unknown): ParseResult {
   const clockOut = b.clockOut === null || b.clockOut === undefined || b.clockOut === "" ? null : b.clockOut;
   if (clockIn !== null && !isTime(clockIn)) return bad("Start time isn't a valid time.");
   if (clockOut !== null && !isTime(clockOut)) return bad("End time isn't a valid time.");
+
+  if (clockIn !== null && clockOut !== null && !hoursWorked(clockIn, clockOut)) {
+    return bad("Check the times.");
+  }
 
   const eventName =
     b.eventName === null || b.eventName === undefined ? null : str(b.eventName, 120);
@@ -91,6 +97,10 @@ export function parseEntryBody(raw: unknown): ParseResult {
     if (priceCharged === null) return bad("Price offered must be an amount from 1 to 100,000.");
   }
 
+  // Notes: optional, up to 300 characters; blank becomes null.
+  const notes = b.notes === null || b.notes === undefined ? "" : str(b.notes, 300);
+  if (notes === null) return bad("Notes are too long (max 300 characters).");
+
   // Missing or non-array expenses mean "none", not an error.
   const rawExpenses: unknown[] = Array.isArray(b.expenses) ? b.expenses : [];
   if (rawExpenses.length > MAX_EXPENSES) return bad(`You can add at most ${MAX_EXPENSES} expenses.`);
@@ -126,8 +136,30 @@ export function parseEntryBody(raw: unknown): ParseResult {
       priceCharged,
       cashReceived,
       bankReceived,
+      notes: notes || null,
       expenses,
       userId: typeof b.userId === "string" ? b.userId : undefined,
     },
+  };
+}
+
+// snake_case shift_entries fields for the save_shift_entry RPC (everything
+// except identity — callers add user_id / entry_date / last_edited_* as needed).
+export function entryRecord(v: ParsedEntry) {
+  return {
+    venue_id: v.venueId,
+    event_name: v.venueId === "event" ? v.eventName : null,
+    clock_in: v.clockIn,
+    clock_out: v.clockOut,
+    total_prints: v.totalPrints,
+    extra_prints: v.extraPrints,
+    system_prints_500: v.systemPrints500,
+    system_prints_250: v.systemPrints250,
+    free_prints: v.freePrints,
+    waste_prints: v.wastePrints,
+    price_charged: v.priceCharged,
+    cash_received: v.cashReceived,
+    bank_received: v.bankReceived,
+    notes: v.notes,
   };
 }

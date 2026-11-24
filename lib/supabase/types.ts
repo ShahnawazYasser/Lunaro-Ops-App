@@ -594,6 +594,14 @@ export interface Database {
         };
         Returns: void;
       };
+      save_shift_entry: {
+        Args: {
+          p_entry: Record<string, unknown>;
+          p_expenses: { description: string; amount: number; category?: string | null }[];
+          p_entry_id?: string | null;
+        };
+        Returns: string;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

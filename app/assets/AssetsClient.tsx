@@ -11,6 +11,7 @@ import FormField, { MoneyField, InputStyles } from "@/components/FormField";
 import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { defer } from "@/lib/defer";
+import { todayInKarachi } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,11 +46,6 @@ interface FormState {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function pkr(n: number) {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
@@ -58,7 +54,7 @@ function blankForm(): FormState {
   return {
     name: "",
     cost: "",
-    purchaseDate: localToday(),
+    purchaseDate: todayInKarachi(),
     usefulLifeMonths: "",
     salvageValue: "",
     venueId: "",

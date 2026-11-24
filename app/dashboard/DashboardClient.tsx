@@ -5,6 +5,7 @@ import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import { cx } from "@/components/cx";
 import { defer } from "@/lib/defer";
+import { currentMonthInKarachi, formatDate, formatMonthLabel, shiftMonth } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -80,38 +81,8 @@ const monthCache = new Map<string, DashboardResponse>();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function prevMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function nextMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonthLabel(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long", year: "numeric",
-  });
-}
-
 function pkr(n: number): string {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-PK", {
-    day: "numeric", month: "short", year: "numeric",
-  });
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -312,7 +283,7 @@ function DashboardSkeleton() {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function DashboardClient() {
-  const [month, setMonth] = useState(currentMonth);
+  const [month, setMonth] = useState(currentMonthInKarachi);
   const [, setVersion] = useState(0); // bumps when the cache is refreshed
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -421,7 +392,7 @@ export default function DashboardClient() {
             <LMark className="h-8 w-8 rounded-[10px] text-base lg:hidden" />
             <h1 className="font-display text-[26px] font-semibold leading-[34px] tracking-[-0.01em] lg:text-[28px]">Dashboard</h1>
           </div>
-          <MonthPill label={formatMonthLabel(month)} onPrev={() => setMonth(prevMonth)} onNext={() => setMonth(nextMonth)} />
+          <MonthPill label={formatMonthLabel(month)} onPrev={() => setMonth((m) => shiftMonth(m, -1))} onNext={() => setMonth((m) => shiftMonth(m, 1))} />
         </header>
 
         {error && (

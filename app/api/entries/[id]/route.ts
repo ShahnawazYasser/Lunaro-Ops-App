@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireOwner, fail, dbError } from "@/lib/api";
-import { parseEntryBody } from "@/lib/entry-input";
+import { entryRecord, parseEntryBody } from "@/lib/entry-input";
 import { todayInKarachi } from "@/lib/dates";
+import { isUuid } from "@/lib/validate";
 import { supabaseAdmin, supabaseAsActor } from "@/lib/supabase/server";
 
 export const preferredRegion = "sin1";
@@ -60,43 +61,52 @@ export async function PUT(
     return fail(400, "The employee on an entry can't be changed.");
   }
 
-  const { error: updateError } = await supabaseAsActor(session.userId)
-    .from("shift_entries")
-    .update({
-      venue_id: body.venueId,
-      event_name: body.venueId === "event" ? body.eventName : null,
-      clock_in: body.clockIn,
-      clock_out: body.clockOut,
-      total_prints: body.totalPrints,
-      extra_prints: body.extraPrints,
-      system_prints_500: body.systemPrints500,
-      system_prints_250: body.systemPrints250,
-      free_prints: body.freePrints,
-      waste_prints: body.wastePrints,
-      price_charged: body.priceCharged,
-      cash_received: body.cashReceived,
-      bank_received: body.bankReceived,
+  // One transaction: shift row + expenses together (save_shift_entry). Through
+  // the actor-tagged client so the audit trigger records the owner.
+  const { error: saveError } = await supabaseAsActor(session.userId).rpc("save_shift_entry", {
+    p_entry: {
+      ...entryRecord(body),
       last_edited_by: session.userId,
       last_edited_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-
-  if (updateError) {
-    // Venue is part of the uniqueness key (user + date + venue): moving this
-    // entry onto a venue the same person already logged that day collides.
-    if (updateError.code === "23505") {
-      return fail(409, "That employee already has an entry for this venue on this date.");
-    }
-    return dbError(updateError);
-  }
-
-  // Replace expenses atomically (delete + insert in one DB transaction)
-  const { error: replaceError } = await supabaseAdmin.rpc("replace_entry_expenses", {
-    p_shift_entry_id: id,
+    },
     p_expenses: body.expenses,
+    p_entry_id: id,
   });
 
-  if (replaceError) return dbError(replaceError);
+  if (saveError) {
+    // Venue is part of the uniqueness key (user + date + venue): moving this
+    // entry onto a venue the same person already logged that day collides.
+    if (saveError.code === "23505") {
+      return fail(409, "That employee already has an entry for this venue on this date.");
+    }
+    return dbError(saveError);
+  }
 
   return NextResponse.json({ ok: true, entryId: id });
+}
+
+// DELETE /api/entries/[id] — owner-only. Goes through the actor-tagged client
+// so the audit trigger writes a 'delete' row naming the owner. entry_audit has
+// no FK to shift_entries, so the history survives; the entry's expenses go with
+// it (ON DELETE CASCADE on expenses.shift_entry_id).
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireOwner();
+  if (session instanceof NextResponse) return session;
+
+  const { id } = await params;
+  if (!isUuid(id)) return fail(404, "Entry not found");
+
+  const { data, error } = await supabaseAsActor(session.userId)
+    .from("shift_entries")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return dbError(error);
+  if (!data) return fail(404, "Entry not found");
+  return NextResponse.json({ ok: true, id });
 }

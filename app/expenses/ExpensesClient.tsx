@@ -14,6 +14,7 @@ import SectionLabel from "@/components/SectionLabel";
 import Toast, { type ToastState } from "@/components/Toast";
 import { CATEGORIES, type Category } from "@/lib/categories";
 import { defer } from "@/lib/defer";
+import { currentMonthInKarachi, formatMonthLabel, todayInKarachi, shiftMonth } from "@/lib/dates";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -62,35 +63,6 @@ interface FormState {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function currentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function formatMonth(m: string): string {
-  const [y, mo] = m.split("-");
-  return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString("en-PK", {
-    month: "long", year: "numeric",
-  });
-}
-
-function prevMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo - 2, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function nextMonth(m: string): string {
-  const [y, mo] = m.split("-").map(Number);
-  const d = new Date(y, mo, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function pkr(n: number) {
   return `PKR ${Math.round(n).toLocaleString("en-PK")}`;
 }
@@ -100,7 +72,7 @@ function blankForm(): FormState {
     category: "Operational",
     amount: "",
     venueId: "",
-    expenseDate: localToday(),
+    expenseDate: todayInKarachi(),
     note: "",
     paidBy: "company",
     payerUserId: "",
@@ -118,7 +90,7 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
   const [toast, setToast] = useState<ToastState | null>(null);
 
   // Filter state
-  const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [filterMonth, setFilterMonth] = useState(currentMonthInKarachi);
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterPaidBy, setFilterPaidBy] = useState<"all" | "company" | "employee">("all");
 
@@ -402,9 +374,9 @@ export default function ExpensesClient({ user, venues, employees }: Props) {
           <SectionLabel>All Expenses</SectionLabel>
           <Card className="space-y-3">
             <div className="flex items-center justify-between">
-              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth(prevMonth)} aria-label="Previous month">←</Button>
-              <span className="text-sm font-medium">{formatMonth(filterMonth)}</span>
-              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth(nextMonth)} aria-label="Next month">→</Button>
+              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">←</Button>
+              <span className="text-sm font-medium">{formatMonthLabel(filterMonth)}</span>
+              <Button variant="secondary" size="sm" className="text-sm!" onClick={() => setFilterMonth((m) => shiftMonth(m, 1))} aria-label="Next month">→</Button>
             </div>
 
             <div className="flex gap-2 flex-wrap">
