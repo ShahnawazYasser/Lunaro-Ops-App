@@ -1320,6 +1320,22 @@ as prior phases). `bookings` confirmed empty and both test months'
   `ws:` for HMR only; LAN IP now comes from `ALLOWED_DEV_ORIGINS`). `getSecret()` rejects a `SESSION_SECRET`
   shorter than 32 characters.
 
+**Chunk 13a — Dashboard maths (`app/api/dashboard/route.ts`, `DashboardClient.tsx`)**
+- **Rent guard:** a 'Rent' expense row is skipped only when its venue had a payout *received this month* with
+  `rent_deducted > 0` (that rent is counted via `payoutRent`). Venues with payout rows but no rent deducted keep
+  their Rent rows. Before this, any venue with any payout row lost all its rent rows.
+- **Rent-coverage alert** only considers recurring costs whose venue has a payout cycle (13b swaps this test for
+  `venues.collects_payments`). Pay-flat-rent venues (Box Pine) never alert.
+- **`owedToEmployees`** = all `pending` employee-paid expenses across ALL months (own query); `owedByEmployee`
+  gives the per-person split. Owner draws come back in the one expenses query and are excluded from
+  `totalExpenses`/`expensesByCategory`/`netProfit`, summed into `ownerDraws`.
+- Removed dead fields `operationalExpenses`, `reimbursements`, `freePrintsCost`. The dashboard response now
+  carries per-day attendance (`attendance[].days`), so the client makes ONE request per month (it no longer
+  calls `/api/attendance`, which the Attendance screen still uses). `payout_cycles` is filtered to rows received
+  this month, unreceived, or due on/after the month start.
+- Data caveat: a stray `payout_cycles` row tagged `event` makes `event` look like a payout venue and raises bogus
+  rent alerts for the recurring costs tagged `event`; delete it (see the Chunk 13 cleanup SQL).
+
 ### In progress
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.

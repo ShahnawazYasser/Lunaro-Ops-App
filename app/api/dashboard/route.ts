@@ -7,8 +7,6 @@ import { deriveAttendance } from "@/lib/attendance";
 
 export const preferredRegion = "sin1";
 
-const FREE_PRINT_COST = 500;
-
 export interface VenueRevenue {
   venueId: string;
   venueName: string;
@@ -19,10 +17,24 @@ export interface VenueRevenue {
   payoutCycles: number;
 }
 
+export interface AttendanceDayStatus {
+  date: string;
+  status: "present" | "absent" | "future";
+}
+
+// Per-employee attendance for the month, derived by lib/attendance.ts — the
+// same rule the Attendance screen uses, so the dashboard needs no second fetch.
 export interface AttendanceSummaryRow {
   id: string;
   name: string;
   daysPresent: number;
+  days: AttendanceDayStatus[];
+}
+
+export interface OwedByEmployee {
+  userId: string;
+  name: string;
+  amount: number;
 }
 
 export interface CategoryExpense {
@@ -43,16 +55,13 @@ export interface RentCoverageItem {
 
 export interface DashboardResponse {
   totalRevenue: number;
-  // Kept for the current dashboard UI: the shift-linked slice of expenses.
-  operationalExpenses: number;
-  // Kept for the current dashboard UI: employee-paid expenses, all statuses.
-  reimbursements: number;
-  // Phase D additions — the honest split, now the basis of the Phase E UI.
   totalExpenses: number;
+  // ALL outstanding employee-paid expenses (reimbursement_status = 'pending'),
+  // whatever month they were incurred in — money owed doesn't expire.
   owedToEmployees: number;
+  owedByEmployee: OwedByEmployee[];
   netProfit: number;
   freePrintsCount: number;
-  freePrintsCost: number;
   wastePrints: number;
   // Cash-basis booking revenue for the month (Phase F) — sum of advance/final
   // payments whose *payment date* falls in this month. amount_charged and
@@ -126,7 +135,7 @@ export async function GET(request: NextRequest) {
     { data: depreciationRows, error: depErr },
     { data: recurringExpenses, error: recurErr },
     { data: payoutCycles, error: payoutErr },
-    { data: drawRows, error: drawErr },
+    { data: owedRows, error: owedErr },
   ] = await Promise.all([
     // Shift entries for the month
     supabaseAdmin
@@ -141,10 +150,12 @@ export async function GET(request: NextRequest) {
     // Accrual rule: an expense counts in the month of its expense_date,
     // regardless of when — or whether — an employee gets reimbursed for it.
     // Marking one paid never moves it between months.
+    //
+    // Owner draws come back in the same query (is_owner_draw) and are split
+    // out below: they are never business costs.
     supabaseAdmin
       .from("expenses")
-      .select("amount, category, paid_by, reimbursement_status, shift_entry_id, venue_id")
-      .eq("is_owner_draw", false) // owner draws are not business costs
+      .select("amount, category, venue_id, is_owner_draw")
       .gte("expense_date", startDate)
       .lte("expense_date", endDate),
 
@@ -179,12 +190,10 @@ export async function GET(request: NextRequest) {
     // monthRange's startDate, so this is a direct equality match.
     supabaseAdmin.from("asset_depreciation").select("amount").eq("month", startDate),
 
-    // Rent-coverage check (Chunk 4) — active recurring costs tied to a
-    // venue, and every payout cycle. Queried in full (not scoped to this
-    // month) since "next payout due" needs to look forward past the
-    // selected month too. Chunk 7 reuses the same rows for payout revenue,
-    // so rows with a null payout_due are included (a received cycle may
-    // never have had a due date entered); payout_due consumers filter below.
+    // Rent-coverage check (Chunk 4) — active recurring costs tied to a venue,
+    // and the payout cycles that matter for this view: received this month
+    // (payout revenue), not yet received, or due on/after the month start
+    // ("next payout due" looks forward past the selected month too).
     supabaseAdmin
       .from("recurring_expenses")
       .select("name, amount, venue_id")
@@ -193,15 +202,18 @@ export async function GET(request: NextRequest) {
 
     supabaseAdmin
       .from("payout_cycles")
-      .select("venue_id, payout_due, gross_amount, rent_deducted, received_on"),
+      .select("venue_id, payout_due, gross_amount, rent_deducted, received_on")
+      .or(
+        `and(received_on.gte.${startDate},received_on.lte.${endDate}),` +
+          `received_on.is.null,payout_due.gte.${startDate}`
+      ),
 
-    // Owner draws: excluded from the expense query above, summed here.
+    // Outstanding staff reimbursements, across ALL months.
     supabaseAdmin
       .from("expenses")
-      .select("amount")
-      .eq("is_owner_draw", true)
-      .gte("expense_date", startDate)
-      .lte("expense_date", endDate),
+      .select("amount, payer_user_id, payer:users!expenses_payer_user_id_fkey(name)")
+      .eq("paid_by", "employee")
+      .eq("reimbursement_status", "pending"),
   ]);
 
   if (shiftErr) return dbError(shiftErr);
@@ -213,14 +225,24 @@ export async function GET(request: NextRequest) {
   if (depErr) return dbError(depErr);
   if (recurErr) return dbError(recurErr);
   if (payoutErr) return dbError(payoutErr);
-  if (drawErr) return dbError(drawErr);
+  if (owedErr) return dbError(owedErr);
 
   const shiftRows = shifts ?? [];
   const cycleRows = payoutCycles ?? [];
 
-  // Venues whose rent comes out of payouts (rent_deducted). Their 'Rent' rows
-  // in `expenses` are excluded below so the rent is counted exactly once.
+  // Venues with a payout cycle in view. Only these can raise the rent-coverage
+  // alert (13b swaps this test for venues.collects_payments).
   const payoutVenueIds = new Set(cycleRows.map((c) => c.venue_id));
+
+  // Rule: skip a 'Rent' expense row only when its venue had a payout RECEIVED
+  // THIS MONTH with rent_deducted > 0 (that rent is counted via payoutRent).
+  const rentFromPayoutVenueIds = new Set(
+    cycleRows
+      .filter(
+        (c) => c.received_on && c.received_on >= startDate && c.received_on <= endDate && c.rent_deducted > 0
+      )
+      .map((c) => c.venue_id)
+  );
 
   // Payout revenue — CASH BASIS: a cycle counts in the month its received_on
   // falls in. cycle_end and payout_due play no role; unreceived = nothing.
@@ -241,21 +263,33 @@ export async function GET(request: NextRequest) {
   }
 
   let totalExpenses = payoutRent;
-  let operationalExpenses = 0;
-  let reimbursements = 0;
-  let owedToEmployees = 0;
+  let ownerDraws = 0;
   const categoryAgg = new Map<string, number>();
 
   for (const e of expenseRows ?? []) {
-    if (e.category === "Rent" && e.venue_id && payoutVenueIds.has(e.venue_id)) continue;
-    totalExpenses += e.amount;
-    if (e.shift_entry_id) operationalExpenses += e.amount;
-    if (e.paid_by === "employee") {
-      reimbursements += e.amount;
-      if (e.reimbursement_status === "pending") owedToEmployees += e.amount;
+    if (e.is_owner_draw) {
+      ownerDraws += e.amount; // not a business cost: stays out of totals
+      continue;
     }
+    if (e.category === "Rent" && e.venue_id && rentFromPayoutVenueIds.has(e.venue_id)) continue;
+    totalExpenses += e.amount;
     categoryAgg.set(e.category, (categoryAgg.get(e.category) ?? 0) + e.amount);
   }
+
+  let owedToEmployees = 0;
+  const owedAgg = new Map<string, OwedByEmployee>();
+  for (const o of owedRows ?? []) {
+    owedToEmployees += o.amount;
+    if (!o.payer_user_id) continue;
+    const row = owedAgg.get(o.payer_user_id) ?? {
+      userId: o.payer_user_id,
+      name: o.payer?.name ?? "Unknown",
+      amount: 0,
+    };
+    row.amount += o.amount;
+    owedAgg.set(o.payer_user_id, row);
+  }
+  const owedByEmployee = Array.from(owedAgg.values()).sort((a, b) => b.amount - a.amount);
 
   const expensesByCategory: CategoryExpense[] = Array.from(categoryAgg.entries())
     .map(([category, amount]) => ({ category, amount }))
@@ -269,7 +303,9 @@ export async function GET(request: NextRequest) {
   // payout_due for that venue strictly after this month, for context.
   const rentCoverage: RentCoverageItem[] = [];
   for (const rec of recurringExpenses ?? []) {
-    if (!rec.venue_id) continue;
+    // Only payout venues can be "uncovered": a venue Lunaro collects at itself
+    // and pays flat rent to (e.g. The Box Pine Avenue) has no payout to cover it.
+    if (!rec.venue_id || !payoutVenueIds.has(rec.venue_id)) continue;
     const venueCycles = cycleRows
       .filter((c) => c.venue_id === rec.venue_id && c.payout_due !== null)
       .sort((a, b) => a.payout_due!.localeCompare(b.payout_due!));
@@ -361,26 +397,24 @@ export async function GET(request: NextRequest) {
     id: emp.id,
     name: emp.name,
     daysPresent: emp.days.filter((d) => d.status === "present").length,
+    days: emp.days.map((d) => ({ date: d.date, status: d.status })),
   }));
 
   const depreciation = (depreciationRows ?? []).reduce((s, r) => s + r.amount, 0);
 
   // Every row in `expenses` is money out, whoever fronted it — so net profit
   // is revenue minus the whole table for the month, minus this month's
-  // depreciation (a non-cash cost — see asset_depreciation). (operationalExpenses
-  // and reimbursements are overlapping slices of totalExpenses, not addends;
-  // never sum them.)
+  // depreciation (a non-cash cost — see asset_depreciation). Owner draws are
+  // excluded from totalExpenses, so they never reach netProfit.
   const netProfit = totalRevenue - totalExpenses - depreciation;
 
   const response: DashboardResponse = {
     totalRevenue,
-    operationalExpenses,
-    reimbursements,
     totalExpenses,
     owedToEmployees,
+    owedByEmployee,
     netProfit,
     freePrintsCount,
-    freePrintsCost: freePrintsCount * FREE_PRINT_COST,
     wastePrints,
     bookingRevenue,
     bookingPaymentsCount,
@@ -394,7 +428,7 @@ export async function GET(request: NextRequest) {
     daysInMonth,
     rentCoverage,
     dailyRevenue,
-    ownerDraws: (drawRows ?? []).reduce((sum, r) => sum + r.amount, 0),
+    ownerDraws,
   };
 
   return NextResponse.json(response);

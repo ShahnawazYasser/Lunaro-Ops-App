@@ -21,10 +21,22 @@ interface CategoryExpense {
   amount: number;
 }
 
+interface AttendanceDay {
+  date: string;
+  status: "present" | "absent" | "future";
+}
+
 interface AttendanceSummaryRow {
   id: string;
   name: string;
   daysPresent: number;
+  days: AttendanceDay[];
+}
+
+interface OwedByEmployee {
+  userId: string;
+  name: string;
+  amount: number;
 }
 
 interface RentCoverageItem {
@@ -40,13 +52,11 @@ interface DailyRevenue {
 
 interface DashboardResponse {
   totalRevenue: number;
-  operationalExpenses: number;
-  reimbursements: number;
   totalExpenses: number;
   owedToEmployees: number;
+  owedByEmployee: OwedByEmployee[];
   netProfit: number;
   freePrintsCount: number;
-  freePrintsCost: number;
   wastePrints: number;
   bookingRevenue: number;
   bookingPaymentsCount: number;
@@ -63,26 +73,9 @@ interface DashboardResponse {
   ownerDraws: number;
 }
 
-// Per-day attendance comes from the existing /api/attendance route (same
-// derivation as the Attendance screen) — the dashboard API only has counts.
-interface AttendanceDay {
-  date: string;
-  status: "present" | "absent" | "future";
-}
-interface EmployeeAttendance {
-  id: string;
-  name: string;
-  days: AttendanceDay[];
-}
-
-interface MonthData {
-  dashboard: DashboardResponse;
-  attendance: EmployeeAttendance[] | null;
-}
-
 // Month results kept for the session so switching back to a month shows it
 // instantly (then quietly refreshes) instead of flashing an empty hero.
-const monthCache = new Map<string, MonthData>();
+const monthCache = new Map<string, DashboardResponse>();
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -256,7 +249,7 @@ function SalesChart({ daily, total }: { daily: DailyRevenue[]; total: number }) 
   );
 }
 
-function AttendanceCard({ rows, perDay }: { rows: AttendanceSummaryRow[]; perDay: EmployeeAttendance[] | null }) {
+function AttendanceCard({ rows }: { rows: AttendanceSummaryRow[] }) {
   return (
     <Glass className="p-5 lg:p-6">
       <h2 className="mb-4 text-base font-semibold leading-[22px]">Attendance</h2>
@@ -265,7 +258,7 @@ function AttendanceCard({ rows, perDay }: { rows: AttendanceSummaryRow[]; perDay
       ) : (
         <div className="space-y-5">
           {rows.map((emp) => {
-            const days = (perDay?.find((p) => p.id === emp.id)?.days ?? []).filter((d) => d.status !== "future");
+            const days = emp.days.filter((d) => d.status !== "future");
             return (
               <div key={emp.id}>
                 <div className="mb-2 flex items-baseline justify-between">
@@ -327,22 +320,14 @@ export default function DashboardClient() {
     setLoading(true);
     setError(null);
     try {
-      const [dashRes, attRes] = await Promise.all([
-        fetch(`/api/dashboard?month=${m}`),
-        fetch(`/api/attendance?month=${m}`),
-      ]);
+      const dashRes = await fetch(`/api/dashboard?month=${m}`);
       if (!dashRes.ok) {
         const e = (await dashRes.json()) as { error?: string };
         setError(e.error ?? "Failed to load dashboard");
         return;
       }
       const dashboard = (await dashRes.json()) as DashboardResponse;
-      let attendance: EmployeeAttendance[] | null = null;
-      if (attRes.ok) {
-        const a = (await attRes.json()) as { employees?: EmployeeAttendance[] } | EmployeeAttendance[];
-        attendance = Array.isArray(a) ? a : (a.employees ?? null);
-      }
-      monthCache.set(m, { dashboard, attendance });
+      monthCache.set(m, dashboard);
       setVersion((v) => v + 1);
     } catch {
       setError("Could not reach server");
@@ -353,8 +338,7 @@ export default function DashboardClient() {
 
   useEffect(() => defer(() => { void fetchMonth(month); }), [month, fetchMonth]);
 
-  const cached = monthCache.get(month);
-  const data = cached?.dashboard ?? null;
+  const data = monthCache.get(month) ?? null;
 
   const hasActivity =
     !!data &&
@@ -522,10 +506,15 @@ export default function DashboardClient() {
                       <p className="mt-2 font-display text-[18px] font-bold leading-[26px] tracking-[-0.01em] lg:mt-3 lg:text-[30px] lg:leading-[34px] lg:tracking-[-0.015em]">
                         {pkr(data.owedToEmployees)}
                       </p>
-                      {data.ownerDraws > 0 && (
-                        <p className="mt-2 text-xs text-text-muted">
-                          Owner draws {pkr(data.ownerDraws)} · not in profit
-                        </p>
+                      {data.owedByEmployee.length > 0 && (
+                        <ul className="mt-2 space-y-0.5">
+                          {data.owedByEmployee.map((o) => (
+                            <li key={o.userId} className="flex justify-between gap-3 text-xs text-text-muted">
+                              <span className="truncate">{o.name}</span>
+                              <span className="shrink-0">{pkr(o.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </Glass>
                     <Glass className="p-5">
@@ -554,7 +543,7 @@ export default function DashboardClient() {
                 <div className="grid gap-3 lg:grid-cols-[716fr_380fr] lg:gap-4">
                   <SalesChart daily={data.dailyRevenue} total={boothSales} />
                   <div className="hidden lg:block">
-                    <AttendanceCard rows={data.attendance} perDay={cached?.attendance ?? null} />
+                    <AttendanceCard rows={data.attendance} />
                   </div>
                 </div>
 
@@ -566,11 +555,20 @@ export default function DashboardClient() {
                     fill="gold"
                     footnote="Cash basis. Payouts count in the month received, not when the cycle ends."
                   />
-                  <BarList title="Expenses by category" rows={expenseRows} fill="raised" />
+                  <BarList
+                    title="Expenses by category"
+                    rows={expenseRows}
+                    fill="raised"
+                    footnote={
+                      data.ownerDraws > 0
+                        ? `Owner draws ${pkr(data.ownerDraws)} (not counted as an expense)`
+                        : undefined
+                    }
+                  />
                 </div>
 
                 <div className="lg:hidden">
-                  <AttendanceCard rows={data.attendance} perDay={cached?.attendance ?? null} />
+                  <AttendanceCard rows={data.attendance} />
                 </div>
               </>
             )}
