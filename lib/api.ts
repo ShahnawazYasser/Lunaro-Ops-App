@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SessionUser } from "@/lib/session";
 import { getVerifiedSession } from "@/lib/auth";
+import { DataError } from "@/lib/data/errors";
 
 // Shared guards and error helpers for API routes.
 //
@@ -52,4 +53,11 @@ export function dbError(error: DbErrorLike): NextResponse {
     return NextResponse.json({ error: "One of the values isn't valid" }, { status: 400 });
   }
   return NextResponse.json({ error: "Something went wrong. Try again." }, { status: 500 });
+}
+
+// Turns anything thrown by lib/data/* into a response: a database failure maps
+// through dbError, anything else is logged and returned as a plain 500.
+export function dataError(e: unknown): NextResponse {
+  if (e instanceof DataError) return dbError(e.db);
+  return fail(500, "Something went wrong. Try again.", e);
 }

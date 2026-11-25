@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession, dbError, fail } from "@/lib/api";
+import { requireSession, dbError, dataError, fail } from "@/lib/api";
+import { getExpenses, type ExpenseFilters } from "@/lib/data/expenses";
 import { isIsoDate, isMonth, isUuid, money, str } from "@/lib/validate";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { monthRange } from "@/lib/dates";
 import { isCategory, isEmployeeCategory } from "@/lib/categories";
 import type { PaidBy, ReimbursementStatus } from "@/lib/supabase/types";
 
@@ -15,19 +15,6 @@ export const preferredRegion = "sin1";
 //                          reimbursement_status = 'paid'
 // Either way the row is always an expense in P&L, in the month of
 // expense_date — marking it paid never moves it between months.
-
-// PostgREST embed note: expenses has THREE foreign keys to users
-// (payer_user_id, related_user_id, logged_by), so every users embed here
-// must pin its constraint name or PostgREST returns PGRST201.
-const SELECT = `
-  id, expense_date, category, amount, description, receipt_url,
-  paid_by, payer_user_id, reimbursement_status,
-  related_user_id, shift_entry_id, venue_id, logged_by, created_at,
-  payer:users!expenses_payer_user_id_fkey(name),
-  related:users!expenses_related_user_id_fkey(name),
-  logger:users!expenses_logged_by_fkey(name),
-  venues(name)
-`;
 
 // ── GET /api/expenses?month=2026-08&paidBy=all|company|employee&userId=… ──
 //
@@ -53,29 +40,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid paidBy filter" }, { status: 400 });
   }
 
-  const { startDate, endDate } = monthRange(month);
-
-  let query = supabaseAdmin
-    .from("expenses")
-    .select(SELECT)
-    .eq("is_owner_draw", false) // draws live on /api/draws, never in the expense list
-    .gte("expense_date", startDate)
-    .lte("expense_date", endDate)
-    .order("expense_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (session.role === "owner") {
-    if (paidBy && paidBy !== "all") query = query.eq("paid_by", paidBy);
-    if (userId && userId !== "all") query = query.eq("payer_user_id", userId);
-  } else {
-    // Employees: own employee-paid rows only, no exceptions.
-    query = query.eq("paid_by", "employee").eq("payer_user_id", session.userId);
+  try {
+    return NextResponse.json(
+      await getExpenses(session, month, {
+        paidBy: (paidBy ?? undefined) as ExpenseFilters["paidBy"],
+        userId: userId ?? undefined,
+      }),
+    );
+  } catch (e) {
+    return dataError(e);
   }
-
-  const { data, error } = await query;
-  if (error) return dbError(error);
-
-  return NextResponse.json({ expenses: data ?? [] });
 }
 
 // Storage path written by /api/expenses/upload: "<user-uuid>/<timestamp>.<ext>"
