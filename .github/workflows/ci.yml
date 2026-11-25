@@ -1,0 +1,23 @@
+name: CI
+
+on: pull_request
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+        env:
+          # Placeholders so the build can import the server modules. No real
+          # secrets live in CI; the build never talks to the database.
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-not-a-real-key
+          SESSION_SECRET: ci-placeholder-session-secret-32-chars-min
