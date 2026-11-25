@@ -159,6 +159,13 @@ explicit `weight` list** (it breaks Turbopack dev). `.glass` must stay inside `@
   months where they have entries. `scripts/seed.ts` is only for the very first owner or recovery; never write a PIN in
   the repo or paste one anywhere.
 
+## Status (2026-11-25)
+Chunks 11a/11b/13/14 are merged to `master` and live (latest merge `affcbfa`). Nothing is queued — wait for a prompt. Owed, not
+yet confirmed: the browser checks for Chunks 13 and 14 and the Chunk 13 cleanup SQL (stray `event` payout cycle, `solos` entry/venue);
+`db/migration_tidy.sql` is unapplied (export the two legacy tables to CSV before dropping them); the CI workflow has not run on
+GitHub yet. Details: `docs/BUILD_LOG.md` → "In progress". Deferred: Google Calendar sync for bookings, Lunaro OS integration,
+`experimental.staleTimes` for instant revisits.
+
 ## What exists (screens)
 1. `/login`, `/set-pin` — PIN pad; forced PIN choice; voluntary change asks for the current PIN.
 2. `/entry` — staff shift form (live PKR summary, shift expenses with categories, notes, price charged).
@@ -172,6 +179,5 @@ explicit `weight` list** (it breaks Turbopack dev). `.glass` must stay inside `@
 10. `/payouts` — venue payout cycles (Lanes): gross, rent deducted, received, manual due date.
 11. `/assets` — equipment with straight-line depreciation. 12. `/recurring` — fixed costs. 13. `/draws` — owner draws.
 14. `/users` — add/reset/deactivate staff. Shared UI in `components/`; one shell (`AppShell`); forms shared
-    (`ShiftEntryForm`, `BookingForm`, `ExpenseForm`, `ExpenseList`). Open work: none queued — wait for a prompt
-    (Google Calendar sync for bookings and the Lunaro OS integration are deferred).
+    (`ShiftEntryForm`, `BookingForm`, `ExpenseForm`, `ExpenseList`).
 Live: https://lunaro-ops-app.vercel.app. Migrations live in `db/`; `db/migration_tidy.sql` is written but NOT applied.

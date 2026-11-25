@@ -1163,7 +1163,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - Verified read-only against production: /mine own-only + `user_id` ignored, bad month 400, audit 403 for staff / 200 for owner, duplicate without `entryId` → 409,
   collected row with `entryId` → 409, someone else's `entryId` → 404, malformed → 400. **Not verified:** an actual staff edit write and the browser UI.
 
-**Chunk 14a — Dead code and shared helpers** (refactor only, branch `chunk-14a-cleanup`, not merged)
+**Chunk 14a — Dead code and shared helpers** (refactor only, branch `chunk-14a-cleanup`, merged in `affcbfa`)
 - `lib/format.ts` (`pkr`, `plural`) replaces 12 local `pkr()` copies (the 9 listed + Draws, Recurring, MyEntries). No local date/month helper copies remain.
 - `MonthSwitcher` gains `variant="pill"` (dashboard glass pill); `MonthPill` deleted.
 - `components/ExpenseForm.tsx` + `components/ExpenseList.tsx` (both take `variant="owner" | "employee"`) and `lib/useReceiptUpload.ts` are shared by `/expenses` and `/reimburse`; their field order, labels, payloads and permissions are unchanged. `ExpenseRow` type lives in `ExpenseList.tsx`.
@@ -1171,7 +1171,7 @@ as prior phases). `bookings` confirmed empty and both test months'
 - All SQL moved to `db/`; `db/supabase_schema.sql` regenerated from the live DB (all tables, view, functions, triggers, indexes, RLS/grants).
 - `tsc`, `eslint`, `npm run build` clean. Not verified in a browser.
 
-**Chunk 14b — One shell, data loaded on the server** (branch `chunk-14b-shell`, on top of 14a; not merged)
+**Chunk 14b — One shell, data loaded on the server** (branch `chunk-14b-shell`, on top of 14a, merged in `affcbfa`)
 - **Route group `app/(app)/`** holds every signed-in screen (dashboard, entries, entry, my-entries, expenses, reimburse, bookings, payouts, assets,
   recurring, draws, attendance, users). URLs unchanged. `app/(app)/layout.tsx` checks the session once and renders `components/AppShell.tsx`
   (the old `BottomNav`: nav, idle timer, desktop left padding, mobile bottom padding). Pages no longer render a nav, `pb-24`, or the inline shell style.
@@ -1197,12 +1197,26 @@ as prior phases). `bookings` confirmed empty and both test months'
   `tsc`, `eslint`, `npm run build` clean. **Not verified in a browser:** nav not remounting, hydration of the seeded cache, month switching from cache,
   the loading skeleton, and the idle prefetch — see the test list.
 
+**Chunk 14c — Docs and database tidy** (branch `chunk-14c-docs`, merged in `affcbfa`)
+- This log was split out of `CLAUDE.md` (verbatim, diff-checked). `CLAUDE.md` was rewritten to 177 lines: current schema (one line per column,
+  built from `db/supabase_schema.sql`), architecture, permanent money/business rules (lifted out of this log), screen list.
+- `db/migration_tidy.sql` written, **NOT applied**: venue/payer/payout indexes, `login_attempts.id` primary key, drop unused `entry_audit_actor_idx`,
+  `recurring_expenses.due_day` nullable; the two legacy-table drops are commented out (export both to CSV first).
+- `.github/workflows/ci.yml`: on pull request, `npm ci`, `tsc`, lint, build. The build step sets placeholder Supabase/session env values because
+  `lib/supabase/server.ts` throws at import without them (verified: build passes with no `.env.local`). The workflow has not yet run on GitHub.
+
+**Chunk 14 shipped 2026-11-25:** 14a+14b+14c merged to `master` as `affcbfa` and pushed (Vercel auto-deploys from `master`).
+
 ### In progress
-- **Chunk 13 (a/b/c) is on branch `chunk-13c-entry-save` (contains 13a `deac0a4`, 13b `4eecbea`, 13c) — not merged to `master`, not deployed.** All
-  its migrations are already applied to production. Still owed: the owner's cleanup SQL (delete the stray `payout_cycles` row for venue `event`;
-  the `solos` shift entry + venue), a browser/phone click-through (month switcher = one request, "Count them" for November, `/entry` hides Lanes,
-  overnight shift, notes, delete entry), and write-verification of `save_shift_entry` + the audit actor on insert/update/delete.
-  Chunk 11 (Amnah user, self-set PINs, revocable sessions) is the next prompt and runs after 13.
+- **Chunks 11a, 11b, 13 and 14 are merged to `master`** (`3ce871a`, `620946c`, `6f191c4`, `affcbfa`). Still owed (never confirmed in this log): the Chunk 13
+  cleanup SQL (delete the stray `payout_cycles` row for venue `event`; the `solos` shift entry + venue); a browser/phone click-through of Chunk 13
+  (month switcher = one request, "Count them", `/entry` hides Lanes, overnight shift, notes, delete entry); write-verification of `save_shift_entry` and the
+  audit actor on insert/update/delete; a real staff self-edit write (Chunk 11b).
+- **Chunk 14 browser checks owed (nothing in 14b was verified in a browser):** dashboard numbers arrive with the HTML (no `/api/dashboard` on load),
+  sidebar does not remount/flicker between screens, month switching and the previous-month warm-up are instant, edits elsewhere refresh the dashboard,
+  `/users` as an employee redirects to `/entry`, `/set-pin` has no nav (and the Amnah temporary-PIN flow works), Entries/Attendance/Expenses/Bookings at phone width.
+- **Open decisions:** apply `db/migration_tidy.sql` (after the CSV export, then the two legacy `drop table` lines); optionally turn on
+  `experimental.staleTimes` so a second visit to a screen is instant (today it shows the skeleton while the server renders); confirm the first CI run on a PR.
 - Finance-v2: Chunks 0–10 done (see Chunk 10 below). All finance-v2 tables from the
   Chunk 1 schema now have a UI. Nothing queued — wait for an explicit prompt.
 - Chunk 10 is **live** (merged to `master` as `ed37e69`, 2026-11-12; Vercel deployed it on push). Read-only smoke test
